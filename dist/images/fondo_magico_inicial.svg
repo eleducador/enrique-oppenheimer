@@ -1,0 +1,227 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
+  <defs>
+    <!-- Sky Gradient: Enchanted Disney twilight pastel -->
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2D1B69"/>
+      <stop offset="35%" stop-color="#4B2C82"/>
+      <stop offset="60%" stop-color="#7B337D"/>
+      <stop offset="85%" stop-color="#C25993"/>
+      <stop offset="100%" stop-color="#FDB48F"/>
+    </linearGradient>
+
+    <!-- Castle Gold Glow Gradient -->
+    <linearGradient id="castleGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFF4B8" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#FFD166" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#F4A261" stop-opacity="0.7"/>
+    </linearGradient>
+
+    <!-- Castle Body Gradient -->
+    <linearGradient id="castleWall" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6C4AB6"/>
+      <stop offset="50%" stop-color="#8D72E1"/>
+      <stop offset="100%" stop-color="#B9E0FF"/>
+    </linearGradient>
+
+    <!-- Rainbow Gradient -->
+    <linearGradient id="rainbowGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF597B" stop-opacity="0.5"/>
+      <stop offset="25%" stop-color="#FFA45B" stop-opacity="0.5"/>
+      <stop offset="50%" stop-color="#FFDD59" stop-opacity="0.5"/>
+      <stop offset="75%" stop-color="#55E6C1" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#3867D6" stop-opacity="0.5"/>
+    </linearGradient>
+
+    <!-- Rolling Hills Gradients -->
+    <linearGradient id="hillBack" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5B8FB9"/>
+      <stop offset="100%" stop-color="#301E67"/>
+    </linearGradient>
+    <linearGradient id="hillMid" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#439A97"/>
+      <stop offset="100%" stop-color="#205E61"/>
+    </linearGradient>
+    <linearGradient id="hillFront" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#62B6B7"/>
+      <stop offset="100%" stop-color="#144272"/>
+    </linearGradient>
+
+    <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFF9DE" stop-opacity="1"/>
+      <stop offset="40%" stop-color="#FFEAA7" stop-opacity="0.7"/>
+      <stop offset="70%" stop-color="#FDCB6E" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#FD79A8" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Star Glow -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+
+    <filter id="magicDustGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="15" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Sky Background -->
+  <rect width="1920" height="1080" fill="url(#skyGrad)"/>
+
+  <!-- Magic Sun / Moon of Wonder -->
+  <circle cx="960" cy="420" r="280" fill="url(#sunGlow)"/>
+
+  <!-- Arc Rainbow -->
+  <path d="M 200 950 A 850 650 0 0 1 1720 950" fill="none" stroke="url(#rainbowGrad)" stroke-width="45" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M 240 950 A 810 610 0 0 1 1680 950" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- Background Stars & Twinkles -->
+  <g fill="#FFF" filter="url(#glow)">
+    <!-- 4-point stars -->
+    <path d="M 320 180 Q 330 180 330 170 Q 330 180 340 180 Q 330 180 330 190 Q 330 180 320 180" fill="#FFD166"/>
+    <path d="M 540 120 Q 555 120 555 105 Q 555 120 570 120 Q 555 120 555 135 Q 555 120 540 120" fill="#FFF4B8"/>
+    <path d="M 820 190 Q 830 190 830 180 Q 830 190 840 190 Q 830 190 830 200 Q 830 190 820 190" fill="#FFB4D6"/>
+    <path d="M 1120 140 Q 1135 140 1135 125 Q 1135 140 1150 140 Q 1135 140 1135 155 Q 1135 140 1120 140" fill="#FFE893"/>
+    <path d="M 1420 170 Q 1435 170 1435 155 Q 1435 170 1450 170 Q 1435 170 1435 185 Q 1435 170 1420 170" fill="#FFD166"/>
+    <path d="M 1680 220 Q 1690 220 1690 210 Q 1690 220 1700 220 Q 1690 220 1690 230 Q 1690 220 1680 220" fill="#FFF"/>
+
+    <!-- Small stars -->
+    <circle cx="180" cy="240" r="3" fill="#FFF" opacity="0.8"/>
+    <circle cx="260" cy="110" r="4" fill="#FFD166" opacity="0.9"/>
+    <circle cx="450" cy="200" r="2.5" fill="#FFF"/>
+    <circle cx="680" cy="90" r="3.5" fill="#FFDEE9"/>
+    <circle cx="990" cy="160" r="4" fill="#FFF"/>
+    <circle cx="1280" cy="90" r="3" fill="#FFD166"/>
+    <circle cx="1520" cy="230" r="3.5" fill="#FFF"/>
+    <circle cx="1780" cy="140" r="4" fill="#FFB4D6"/>
+    <circle cx="1840" cy="280" r="2.5" fill="#FFF"/>
+  </g>
+
+  <!-- Golden Magic Dust Stream -->
+  <path d="M 120 500 C 450 320, 800 550, 1150 380 C 1450 240, 1750 480, 1880 390" fill="none" stroke="#FFD166" stroke-width="4" stroke-dasharray="8,12" opacity="0.5" filter="url(#glow)"/>
+  <path d="M 140 520 C 470 340, 820 570, 1170 400 C 1470 260, 1770 500, 1900 410" fill="none" stroke="#FF9FF3" stroke-width="2" stroke-dasharray="4,8" opacity="0.6"/>
+
+  <!-- Distant Fairy Tale Castle Silhouette in the Center -->
+  <g fill="url(#castleWall)" opacity="0.85" filter="url(#glow)">
+    <!-- Central Tower Base -->
+    <rect x="910" y="320" width="100" height="260" rx="6"/>
+    <!-- Central Grand Spire -->
+    <polygon points="910,320 960,180 1010,320"/>
+    <!-- Spire Flag -->
+    <path d="M 960 180 L 960 145 L 995 160 Z" fill="#FF6B8B"/>
+
+    <!-- Left Tower 1 -->
+    <rect x="850" y="380" width="50" height="200" rx="4"/>
+    <polygon points="850,380 875,250 900,380"/>
+    <path d="M 875 250 L 875 220 L 900 235 Z" fill="#FFD166"/>
+
+    <!-- Left Tower 2 -->
+    <rect x="790" y="440" width="50" height="150" rx="4"/>
+    <polygon points="790,440 815,330 840,440"/>
+    <path d="M 815 330 L 815 305 L 838 318 Z" fill="#54A0FF"/>
+
+    <!-- Right Tower 1 -->
+    <rect x="1020" y="380" width="50" height="200" rx="4"/>
+    <polygon points="1020,380 1045,250 1070,380"/>
+    <path d="M 1045 250 L 1045 220 L 1070 235 Z" fill="#FFD166"/>
+
+    <!-- Right Tower 2 -->
+    <rect x="1080" y="440" width="50" height="150" rx="4"/>
+    <polygon points="1080,440 1105,330 1130,440"/>
+    <path d="M 1105 330 L 1105 305 L 1128 318 Z" fill="#54A0FF"/>
+
+    <!-- Castle Bridge & Gate -->
+    <path d="M 880 580 Q 960 520 1040 580 Z" fill="#FFD166" opacity="0.9"/>
+    <!-- Glowing Windows -->
+    <rect x="945" y="360" width="30" height="45" rx="15" fill="#FFEAA7" opacity="0.95"/>
+    <rect x="865" y="420" width="20" height="30" rx="10" fill="#FFEAA7" opacity="0.9"/>
+    <rect x="1035" y="420" width="20" height="30" rx="10" fill="#FFEAA7" opacity="0.9"/>
+  </g>
+
+  <!-- Cute Whimsical Hot Air Balloons -->
+  <!-- Left Balloon -->
+  <g transform="translate(240, 260) scale(0.85)">
+    <ellipse cx="60" cy="70" rx="50" ry="60" fill="#FF6B8B"/>
+    <path d="M 35 30 Q 60 70 35 120" stroke="#FFD166" stroke-width="6" fill="none"/>
+    <path d="M 85 30 Q 60 70 85 120" stroke="#FFD166" stroke-width="6" fill="none"/>
+    <line x1="35" y1="130" x2="48" y2="160" stroke="#FFEAA7" stroke-width="2"/>
+    <line x1="85" y1="130" x2="72" y2="160" stroke="#FFEAA7" stroke-width="2"/>
+    <rect x="46" y="160" width="28" height="20" rx="4" fill="#D6A2E8"/>
+    <circle cx="60" cy="170" r="4" fill="#FFD166"/>
+  </g>
+
+  <!-- Right Balloon -->
+  <g transform="translate(1600, 220) scale(0.7)">
+    <ellipse cx="60" cy="70" rx="50" ry="60" fill="#54A0FF"/>
+    <path d="M 35 30 Q 60 70 35 120" stroke="#FFEAA7" stroke-width="6" fill="none"/>
+    <path d="M 85 30 Q 60 70 85 120" stroke="#FFEAA7" stroke-width="6" fill="none"/>
+    <line x1="35" y1="130" x2="48" y2="160" stroke="#FFEAA7" stroke-width="2"/>
+    <line x1="85" y1="130" x2="72" y2="160" stroke="#FFEAA7" stroke-width="2"/>
+    <rect x="46" y="160" width="28" height="20" rx="4" fill="#FF9FF3"/>
+  </g>
+
+  <!-- Fluffy Whimsical Dream Clouds -->
+  <!-- Cloud 1 Left -->
+  <g fill="#FFFFFF" opacity="0.85" filter="url(#glow)">
+    <circle cx="180" cy="540" r="60"/>
+    <circle cx="240" cy="510" r="75"/>
+    <circle cx="310" cy="530" r="65"/>
+    <circle cx="380" cy="550" r="50"/>
+    <rect x="180" y="550" width="200" height="40" rx="20"/>
+  </g>
+
+  <!-- Cloud 2 Center-Right -->
+  <g fill="#FFF0F5" opacity="0.8" filter="url(#glow)">
+    <circle cx="1480" cy="460" r="70"/>
+    <circle cx="1550" cy="430" r="85"/>
+    <circle cx="1630" cy="450" r="75"/>
+    <circle cx="1700" cy="480" r="55"/>
+    <rect x="1480" y="470" width="220" height="50" rx="25"/>
+  </g>
+
+  <!-- Soft Rolling Fantasy Hills -->
+  <!-- Back Hill -->
+  <path d="M 0 740 Q 480 620 960 700 Q 1440 780 1920 680 L 1920 1080 L 0 1080 Z" fill="url(#hillBack)" opacity="0.9"/>
+
+  <!-- Mid Hill -->
+  <path d="M 0 830 Q 560 750 1100 820 Q 1580 890 1920 800 L 1920 1080 L 0 1080 Z" fill="url(#hillMid)" opacity="0.95"/>
+
+  <!-- Front Hill with Pastel Wonder -->
+  <path d="M 0 920 Q 420 860 920 920 Q 1420 980 1920 900 L 1920 1080 L 0 1080 Z" fill="url(#hillFront)"/>
+
+  <!-- Magical Playful Trees on the Hills -->
+  <!-- Left Tree 1 (Lollipop/Cotton Candy Style) -->
+  <g transform="translate(140, 780)">
+    <rect x="25" y="50" width="10" height="60" rx="3" fill="#8B4513" opacity="0.7"/>
+    <circle cx="30" cy="40" r="35" fill="#FF9FF3" opacity="0.9"/>
+    <circle cx="30" cy="35" r="25" fill="#FECA57" opacity="0.9"/>
+  </g>
+
+  <!-- Left Tree 2 -->
+  <g transform="translate(230, 830)">
+    <rect x="25" y="45" width="10" height="50" rx="3" fill="#8B4513" opacity="0.7"/>
+    <circle cx="30" cy="35" r="30" fill="#54A0FF" opacity="0.9"/>
+    <circle cx="30" cy="30" r="20" fill="#1DD1A1" opacity="0.9"/>
+  </g>
+
+  <!-- Right Tree 1 -->
+  <g transform="translate(1720, 800)">
+    <rect x="25" y="50" width="10" height="60" rx="3" fill="#8B4513" opacity="0.7"/>
+    <circle cx="30" cy="40" r="38" fill="#FF6B8B" opacity="0.9"/>
+    <circle cx="30" cy="35" r="26" fill="#FFF200" opacity="0.9"/>
+  </g>
+
+  <!-- Right Tree 2 -->
+  <g transform="translate(1810, 850)">
+    <rect x="25" y="45" width="10" height="50" rx="3" fill="#8B4513" opacity="0.7"/>
+    <circle cx="30" cy="35" r="28" fill="#55E6C1" opacity="0.9"/>
+  </g>
+
+  <!-- Sparkle Flares on Foreground -->
+  <g fill="#FFF9C4" filter="url(#glow)">
+    <circle cx="480" cy="920" r="6"/>
+    <circle cx="760" cy="890" r="5"/>
+    <circle cx="1180" cy="910" r="7"/>
+    <circle cx="1520" cy="930" r="5"/>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Colegio Capitán Enrique Oppenheimer - Aula Virtual",
+  "short_name": "Oppenheimer",
+  "description": "Sistema de avance curricular, desarrollo de temas con ejercicios prácticos, exámenes en tiempo real y control de asistencia escolar.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FAF8F5",
+  "theme_color": "#7F1D1D",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/src/assets/images/colegio_oppenheimer_insignia_1791666931203.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg",
+      "purpose": "any"
+    }
+  ]
+}
