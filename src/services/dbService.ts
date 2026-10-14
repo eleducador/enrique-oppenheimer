@@ -65,15 +65,19 @@ export async function authenticateUser(
     return { success: false, error: 'Por favor ingrese su usuario y contraseña.' };
   }
 
-  // 1. Si Firebase está activo, consultar la colección 'users'
-  if (isFirebaseConfigured() && db) {
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('codeLower', '==', normalizedCode));
-      const querySnapshot = await getDocs(q);
+  // 1. Acceso directo maestro para Administrador inicial
+  if (normalizedCode === 'admin' && trimmedPassword === 'admin') {
+    return { success: true, user: ADMIN_USER };
+  }
 
-      if (!querySnapshot.empty) {
-        const userDoc = querySnapshot.docs[0].data() as UserProfile;
+  // 2. Si Firebase está activo, consultar Firestore en la nube
+  if (db) {
+    try {
+      // Búsqueda directa por ID (rápido y directo)
+      const directDocRef = doc(db, 'users', normalizedCode);
+      const directSnap = await getDoc(directDocRef);
+      if (directSnap.exists()) {
+        const userDoc = directSnap.data() as UserProfile;
         if (userDoc.password && userDoc.password !== trimmedPassword) {
           return { success: false, error: 'Contraseña incorrecta para el usuario ingresado.' };
         }
@@ -82,16 +86,52 @@ export async function authenticateUser(
         }
         return { success: true, user: userDoc };
       }
-    } catch (err) {
-      console.warn('⚠️ [Auth] Error consultando Firestore, verificando almacenamiento local:', err);
+
+      // Búsqueda por query en colección 'users' (por codeLower)
+      const usersRef = collection(db, 'users');
+      const qCode = query(usersRef, where('codeLower', '==', normalizedCode));
+      const codeSnapshot = await getDocs(qCode);
+
+      if (!codeSnapshot.empty) {
+        const userDoc = codeSnapshot.docs[0].data() as UserProfile;
+        if (userDoc.password && userDoc.password !== trimmedPassword) {
+          return { success: false, error: 'Contraseña incorrecta para el usuario ingresado.' };
+        }
+        if (userDoc.paymentStatus === 'Bloqueado por Pago') {
+          return { success: false, user: userDoc, error: 'BLOCKED_PAYMENT' };
+        }
+        return { success: true, user: userDoc };
+      }
+
+      // Búsqueda por query en colección 'users' (por nameLower)
+      const qName = query(usersRef, where('nameLower', '==', normalizedCode));
+      const nameSnapshot = await getDocs(qName);
+
+      if (!nameSnapshot.empty) {
+        const userDoc = nameSnapshot.docs[0].data() as UserProfile;
+        if (userDoc.password && userDoc.password !== trimmedPassword) {
+          return { success: false, error: 'Contraseña incorrecta para el usuario ingresado.' };
+        }
+        if (userDoc.paymentStatus === 'Bloqueado por Pago') {
+          return { success: false, user: userDoc, error: 'BLOCKED_PAYMENT' };
+        }
+        return { success: true, user: userDoc };
+      }
+    } catch (err: any) {
+      console.warn('⚠️ [Auth] Error consultando Firestore en la nube:', err?.message || err);
     }
   }
 
-  // 2. Almacenamiento Local / Respaldo en Memoria
+  // 3. Almacenamiento Local de Respaldo (coincidencia flexible por código, nombre o primer nombre)
   const localUsers = getStoredUsers();
-  const matched = localUsers.find(
-    (u) => u.code.toLowerCase().trim() === normalizedCode
-  );
+  const matched = localUsers.find((u) => {
+    const codeMatch = u.code.toLowerCase().trim() === normalizedCode;
+    const nameMatch = u.name.toLowerCase().trim() === normalizedCode;
+    const firstNameMatch = u.name.toLowerCase().trim().split(' ')[0] === normalizedCode;
+    const emailMatch = u.email && u.email.toLowerCase().trim() === normalizedCode;
+    const idMatch = u.id.toLowerCase().trim() === normalizedCode;
+    return codeMatch || nameMatch || firstNameMatch || emailMatch || idMatch;
+  });
 
   if (matched) {
     if (matched.password && matched.password !== trimmedPassword) {
@@ -103,33 +143,40 @@ export async function authenticateUser(
     return { success: true, user: matched };
   }
 
-  // Comprobación de acceso inicial para Administrador Maestro
-  if (normalizedCode === 'admin' && trimmedPassword === 'admin') {
-    return { success: true, user: ADMIN_USER };
-  }
-
   return {
     success: false,
-    error: 'Credenciales no válidas. Verifique su usuario y contraseña o comuníquese con Dirección.',
+    error: 'Credenciales no válidas. Asegúrate de ingresar tu Código (ej. CEO-2026-...) o tu Nombre y la contraseña asignada.',
   };
 }
 
 export function subscribeUsers(callback: (users: UserProfile[]) => void): () => void {
-  if (isFirebaseConfigured() && db) {
+  if (db) {
     const usersRef = collection(db, 'users');
     const unsubscribe = onSnapshot(
       usersRef,
       (snapshot) => {
         if (snapshot.empty) {
-          // Inicializar usuario admin raíz si la base de datos está vacía
+          // Inicializar usuario admin raíz si la colección está vacía
           saveUser(ADMIN_USER);
           callback([ADMIN_USER]);
         } else {
           const usersList: UserProfile[] = [];
           snapshot.forEach((docSnap) => {
-            usersList.push(docSnap.data() as UserProfile);
+            const data = docSnap.data() as UserProfile;
+            // Evitar duplicados por id o código
+            if (
+              data &&
+              data.code &&
+              !usersList.some(
+                (u) =>
+                  u.id === data.id ||
+                  u.code.toLowerCase().trim() === data.code.toLowerCase().trim()
+              )
+            ) {
+              usersList.push(data);
+            }
           });
-          callback(usersList);
+          callback(usersList.length > 0 ? usersList : [ADMIN_USER]);
           localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(usersList));
         }
       },
@@ -153,17 +200,25 @@ export async function saveUser(user: UserProfile): Promise<void> {
     codeLower: user.code.toLowerCase().trim(),
   };
 
-  if (isFirebaseConfigured() && db) {
+  if (db) {
     try {
+      // Guardar con su ID único y su código para consulta directa
       await setDoc(doc(db, 'users', user.id), userPayload, { merge: true });
-    } catch (err) {
-      console.error('Error guardando usuario en Firestore:', err);
+      await setDoc(doc(db, 'users', user.code.toLowerCase().trim()), userPayload, { merge: true });
+      console.info(`✅ [Firestore] Usuario ${user.name} (${user.code}) guardado en la nube exitosamente.`);
+    } catch (err: any) {
+      console.error('❌ [Firestore] Error guardando usuario:', err?.message || err);
+      throw err;
     }
   }
 
   // Respaldo local
   const localUsers = getStoredUsers();
-  const idx = localUsers.findIndex((u) => u.id === user.id);
+  const idx = localUsers.findIndex(
+    (u) =>
+      u.id === user.id ||
+      u.code.toLowerCase().trim() === user.code.toLowerCase().trim()
+  );
   if (idx >= 0) {
     localUsers[idx] = user;
   } else {
@@ -185,7 +240,7 @@ export async function deleteUser(userId: string): Promise<void> {
   localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(localUsers));
 }
 
-function getStoredUsers(): UserProfile[] {
+export function getStoredUsers(): UserProfile[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.USERS);
     if (saved) {
