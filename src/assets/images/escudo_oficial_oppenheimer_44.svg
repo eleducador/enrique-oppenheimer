@@ -1,0 +1,215 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#990B27" />
+      <stop offset="50%" stop-color="#840A21" />
+      <stop offset="100%" stop-color="#6E0519" />
+    </linearGradient>
+
+    <!-- Gold Stroke Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCE182" />
+      <stop offset="50%" stop-color="#DEB446" />
+      <stop offset="100%" stop-color="#B88A24" />
+    </linearGradient>
+
+    <!-- Ribbon Gradient -->
+    <linearGradient id="ribbonGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8E0C24" />
+      <stop offset="50%" stop-color="#6F0519" />
+      <stop offset="100%" stop-color="#550312" />
+    </linearGradient>
+
+    <!-- Ribbon Fold Shadow -->
+    <linearGradient id="foldShadow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3D010B" />
+      <stop offset="100%" stop-color="#550312" />
+    </linearGradient>
+
+    <!-- Drop Shadow for Oval -->
+    <filter id="ovalShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+
+    <!-- Drop Shadow for Ribbon -->
+    <filter id="ribbonShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="6" flood-color="#000000" flood-opacity="0.45" />
+    </filter>
+  </defs>
+
+  <!-- Solid School Crimson Canvas -->
+  <rect width="500" height="500" fill="url(#bgGrad)" rx="28" />
+
+  <!-- ============================================================ -->
+  <!-- LAUREL WREATH (LEFT & RIGHT SYMMETRICAL BRANCHES) -->
+  <!-- ============================================================ -->
+  <g fill="#D34B6B" opacity="0.88">
+    <!-- Left Branch Leaves -->
+    <!-- Lower leaves -->
+    <path d="M 125 350 C 105 342 92 325 96 308 C 108 316 122 332 125 350 Z" />
+    <path d="M 135 340 C 112 328 106 308 116 295 C 126 306 133 324 135 340 Z" />
+    <!-- Mid-lower leaves -->
+    <path d="M 116 295 C 92 284 84 265 92 250 C 105 258 114 278 116 295 Z" />
+    <path d="M 128 285 C 106 270 102 248 112 238 C 122 248 128 268 128 285 Z" />
+    <!-- Middle leaves -->
+    <path d="M 112 238 C 88 226 82 205 92 192 C 104 200 112 220 112 238 Z" />
+    <path d="M 125 228 C 104 212 102 190 114 180 C 124 190 126 210 125 228 Z" />
+    <!-- Mid-upper leaves -->
+    <path d="M 116 182 C 94 168 92 148 104 136 C 114 146 120 165 116 182 Z" />
+    <path d="M 132 172 C 112 155 114 135 128 126 C 136 138 136 156 132 172 Z" />
+    <!-- Upper leaves -->
+    <path d="M 130 126 C 112 110 116 92 130 82 C 138 94 138 112 130 126 Z" />
+    <path d="M 148 120 C 132 102 138 84 152 76 C 158 90 156 108 148 120 Z" />
+    <!-- Top arching leaves -->
+    <path d="M 154 78 C 142 62 150 46 166 42 C 170 56 164 70 154 78 Z" />
+    <path d="M 174 74 C 164 58 174 44 190 40 C 192 54 184 66 174 74 Z" />
+    <path d="M 196 66 C 190 50 202 38 218 38 C 218 52 208 62 196 66 Z" />
+
+    <!-- Left Curved Stem Line -->
+    <path d="M 130 350 C 110 290 110 170 216 48" fill="none" stroke="#D34B6B" stroke-width="3" stroke-linecap="round" />
+
+    <!-- Right Branch Leaves (Mirrored) -->
+    <!-- Lower leaves -->
+    <path d="M 375 350 C 395 342 408 325 404 308 C 392 316 378 332 375 350 Z" />
+    <path d="M 365 340 C 388 328 394 308 384 295 C 374 306 367 324 365 340 Z" />
+    <!-- Mid-lower leaves -->
+    <path d="M 384 295 C 408 284 416 265 408 250 C 395 258 386 278 384 295 Z" />
+    <path d="M 372 285 C 394 270 398 248 388 238 C 378 248 372 268 372 285 Z" />
+    <!-- Middle leaves -->
+    <path d="M 388 238 C 412 226 418 205 408 192 C 396 200 388 220 388 238 Z" />
+    <path d="M 375 228 C 396 212 398 190 386 180 C 376 190 374 210 375 228 Z" />
+    <!-- Mid-upper leaves -->
+    <path d="M 384 182 C 406 168 408 148 396 136 C 386 146 380 165 384 182 Z" />
+    <path d="M 368 172 C 388 155 386 135 372 126 C 364 138 364 156 368 172 Z" />
+    <!-- Upper leaves -->
+    <path d="M 370 126 C 388 110 384 92 370 82 C 362 94 362 112 370 126 Z" />
+    <path d="M 352 120 C 368 102 362 84 348 76 C 342 90 344 108 352 120 Z" />
+    <!-- Top arching leaves -->
+    <path d="M 346 78 C 358 62 350 46 334 42 C 330 56 336 70 346 78 Z" />
+    <path d="M 326 74 C 336 58 326 44 310 40 C 308 54 316 66 326 74 Z" />
+    <path d="M 304 66 C 310 50 298 38 282 38 C 282 52 292 62 304 66 Z" />
+
+    <!-- Right Curved Stem Line -->
+    <path d="M 370 350 C 390 290 390 170 284 48" fill="none" stroke="#D34B6B" stroke-width="3" stroke-linecap="round" />
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- CENTRAL WHITE OVAL WITH GOLD EDGES -->
+  <!-- ============================================================ -->
+  <g filter="url(#ovalShadow)">
+    <!-- Outer Gold Rim -->
+    <ellipse cx="250" cy="235" rx="122" ry="164" fill="none" stroke="url(#goldGrad)" stroke-width="4.5" />
+    <!-- Inner White Solid Oval -->
+    <ellipse cx="250" cy="235" rx="118" ry="160" fill="#FFFFFF" stroke="#DEB446" stroke-width="1.5" />
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- TOP EMBLEM: IEP & EO MONOGRAM SHIELD -->
+  <!-- ============================================================ -->
+  <g transform="translate(216, 92)">
+    <!-- Shield Outline -->
+    <path d="M 0 0 L 23 -7 L 34 0 L 45 -7 L 68 0 L 68 45 C 68 68 34 82 34 82 C 34 82 0 68 0 45 Z"
+          fill="none" stroke="#880E24" stroke-width="2.2" stroke-linejoin="round" />
+
+    <!-- Top Dividing Horizontal Line -->
+    <line x1="0" y1="22" x2="68" y2="22" stroke="#880E24" stroke-width="1.8" />
+
+    <!-- Two Top Dividing Vertical Lines -->
+    <line x1="22.5" y1="-2" x2="22.5" y2="22" stroke="#880E24" stroke-width="1.8" />
+    <line x1="45.5" y1="-2" x2="45.5" y2="22" stroke="#880E24" stroke-width="1.8" />
+
+    <!-- Letters "I", "E", "P" in upper compartments -->
+    <text x="11" y="16" font-family="'Times New Roman', Georgia, serif" font-size="14" font-weight="bold" fill="#880E24" text-anchor="middle">I</text>
+    <text x="34" y="16" font-family="'Times New Roman', Georgia, serif" font-size="14" font-weight="bold" fill="#880E24" text-anchor="middle">E</text>
+    <text x="57" y="16" font-family="'Times New Roman', Georgia, serif" font-size="14" font-weight="bold" fill="#880E24" text-anchor="middle">P</text>
+
+    <!-- Cursive Monogram "EO" inside lower shield area -->
+    <path d="M 24 35 C 16 35 15 44 23 46 C 30 48 31 56 22 58 C 17 59 13 54 14 49"
+          fill="none" stroke="#880E24" stroke-width="2.4" stroke-linecap="round" />
+    <path d="M 44 32 C 34 32 30 46 36 60 C 42 70 54 62 48 46 C 44 36 39 33 44 32 Z"
+          fill="none" stroke="#880E24" stroke-width="2.4" stroke-linecap="round" />
+    <line x1="18" y1="46" x2="28" y2="46" stroke="#880E24" stroke-width="2" stroke-linecap="round" />
+  </g>
+
+  <!-- ============================================================ -->
+  <!-- CENTER TEXT: "44 Años" -->
+  <!-- ============================================================ -->
+  <!-- Large "44" in Serif Crimson -->
+  <text x="250" y="248"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="82"
+        font-weight="bold"
+        font-style="italic"
+        fill="#880E24"
+        text-anchor="middle"
+        letter-spacing="-1">
+    44
+  </text>
+
+  <!-- Cursive Calligraphic "Años" -->
+  <text x="250" y="306"
+        font-family="'Brush Script MT', 'Dancing Script', 'Playfair Display', Georgia, cursive, serif"
+        font-size="56"
+        font-style="italic"
+        fill="#880E24"
+        text-anchor="middle"
+        letter-spacing="1">
+    Años
+  </text>
+
+  <!-- ============================================================ -->
+  <!-- BOTTOM CRIMSON BANNER RIBBON: "OPPENHEIMER" -->
+  <!-- ============================================================ -->
+  <g filter="url(#ribbonShadow)">
+    <!-- Back Ribbon Fold Tails (Left & Right Fishtail ends) -->
+    <!-- Left fishtail tail -->
+    <path d="M 85 375 L 140 355 L 140 405 L 85 425 L 102 400 Z"
+          fill="url(#foldShadow)" stroke="url(#goldGrad)" stroke-width="1.8" />
+    <!-- Right fishtail tail -->
+    <path d="M 415 375 L 360 355 L 360 405 L 415 425 L 398 400 Z"
+          fill="url(#foldShadow)" stroke="url(#goldGrad)" stroke-width="1.8" />
+
+    <!-- Ribbon Folds Underneath -->
+    <polygon points="128,396 142,392 142,425" fill="#2E0108" />
+    <polygon points="372,396 358,392 358,425" fill="#2E0108" />
+
+    <!-- Main Front Curved Ribbon -->
+    <path d="M 125 390
+             C 180 368, 320 368, 375 390
+             L 370 435
+             C 315 415, 185 415, 130 435
+             Z"
+          fill="url(#ribbonGrad)"
+          stroke="url(#goldGrad)"
+          stroke-width="2.8"
+          stroke-linejoin="round" />
+
+    <!-- Ribbon Inner Accent Line -->
+    <path d="M 132 394
+             C 184 374, 316 374, 368 394"
+          fill="none"
+          stroke="#FCE182"
+          stroke-width="1"
+          opacity="0.8" />
+    <path d="M 137 430
+             C 189 411, 311 411, 363 430"
+          fill="none"
+          stroke="#FCE182"
+          stroke-width="1"
+          opacity="0.8" />
+
+    <!-- Curved Text: OPPENHEIMER -->
+    <!-- Define path for text to arch naturally on ribbon -->
+    <path id="ribbonTextPath" d="M 136 414 C 188 393, 312 393, 364 414" fill="none" />
+    <text font-family="'Plus Jakarta Sans', Arial, sans-serif"
+          font-weight="900"
+          font-size="23"
+          fill="#FFFFFF"
+          letter-spacing="5">
+      <textPath href="#ribbonTextPath" startOffset="50%" text-anchor="middle">
+        OPPENHEIMER
+      </textPath>
+    </text>
+  </g>
+</svg>

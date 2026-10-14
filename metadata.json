@@ -1,0 +1,6 @@
+{
+  "name": "Colegio Capitán Enrique Oppenheimer - Aula Virtual & Gestión Curricular",
+  "description": "Sistema integral de gestión académica, avance curricular por curso y grado, generación automática de material educativo con ejercicios prácticos, exámenes en tiempo real y control de asistencia del Colegio Capitán Enrique Oppenheimer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
