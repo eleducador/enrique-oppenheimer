@@ -4,7 +4,8 @@ import {
   setDoc,
   getDocs,
   getDoc,
-  deleteDoc,
+  updateDoc,
+  arrayUnion,
   onSnapshot,
   query,
   where,
@@ -15,6 +16,7 @@ import { db, isFirebaseConfigured } from './firebase';
 import {
   UserProfile,
   LiveClassSession,
+  LiveClassParticipant,
   LiveClassMessage,
   StudentChatMessage,
   CourseItem,
@@ -315,7 +317,8 @@ export async function updateLiveClass(
 export async function updateWhiteboard(
   notes: string,
   isProjected: boolean,
-  drawingData?: string
+  drawingData?: string,
+  activeTab?: 'notes' | 'canvas'
 ): Promise<void> {
   const payload: Partial<LiveClassSession> = {
     whiteboardNotes: notes,
@@ -324,7 +327,67 @@ export async function updateWhiteboard(
   if (drawingData !== undefined) {
     payload.whiteboardDrawingData = drawingData;
   }
+  if (activeTab !== undefined) {
+    payload.whiteboardActiveTab = activeTab;
+  }
   await updateLiveClass(payload);
+}
+
+export async function updateLiveCamState(
+  isCamActive: boolean,
+  teacherLiveFrame?: string,
+  isScreenSharing?: boolean
+): Promise<void> {
+  const payload: Partial<LiveClassSession> = {
+    isCamActive,
+  };
+  if (teacherLiveFrame !== undefined) {
+    payload.teacherLiveFrame = teacherLiveFrame;
+  }
+  if (isScreenSharing !== undefined) {
+    payload.isScreenSharing = isScreenSharing;
+  }
+  await updateLiveClass(payload);
+}
+
+export async function joinLiveClass(
+  participant: LiveClassParticipant
+): Promise<void> {
+  if (isFirebaseConfigured() && db) {
+    try {
+      const liveDocRef = doc(db, 'live_classes', 'active_session');
+      const snap = await getDoc(liveDocRef);
+      if (snap.exists()) {
+        const session = snap.data() as LiveClassSession;
+        const current = session.participants || [];
+        if (!current.some((p) => p.id === participant.id)) {
+          const updated = [...current, participant];
+          await updateDoc(liveDocRef, { participants: updated });
+        }
+      }
+    } catch (err) {
+      console.warn('Error registrando participante en sesión en vivo:', err);
+    }
+  }
+}
+
+export async function leaveLiveClass(
+  participantId: string
+): Promise<void> {
+  if (isFirebaseConfigured() && db) {
+    try {
+      const liveDocRef = doc(db, 'live_classes', 'active_session');
+      const snap = await getDoc(liveDocRef);
+      if (snap.exists()) {
+        const session = snap.data() as LiveClassSession;
+        const current = session.participants || [];
+        const updated = current.filter((p) => p.id !== participantId);
+        await updateDoc(liveDocRef, { participants: updated });
+      }
+    } catch (err) {
+      console.warn('Error removiendo participante:', err);
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------
