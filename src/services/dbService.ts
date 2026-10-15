@@ -350,6 +350,27 @@ export async function updateLiveCamState(
   await updateLiveClass(payload);
 }
 
+export async function updateLiveBroadcastState(
+  isBroadcasting: boolean,
+  isMicActive: boolean,
+  isCamActive: boolean,
+  teacherLiveFrame?: string,
+  isScreenSharing?: boolean
+): Promise<void> {
+  const payload: Partial<LiveClassSession> = {
+    isBroadcasting,
+    isMicActive,
+    isCamActive,
+  };
+  if (teacherLiveFrame !== undefined) {
+    payload.teacherLiveFrame = teacherLiveFrame;
+  }
+  if (isScreenSharing !== undefined) {
+    payload.isScreenSharing = isScreenSharing;
+  }
+  await updateLiveClass(payload);
+}
+
 export async function joinLiveClass(
   participant: LiveClassParticipant
 ): Promise<void> {

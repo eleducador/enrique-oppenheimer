@@ -48,23 +48,88 @@ export interface WebRTCViewerSignal {
 }
 
 /**
+ * Genera una pista de video sintética ultraliviana (5 fps) con el emblema y nombre
+ * del docente para mantener la sesión WebRTC y el audio activos cuando la cámara está apagada o proyectando pizarra.
+ */
+export function createAvatarVideoTrack(teacherName: string): MediaStreamTrack {
+  const canvas = document.createElement('canvas');
+  canvas.width = 320;
+  canvas.height = 180;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#070B14';
+    ctx.fillRect(0, 0, 320, 180);
+
+    ctx.strokeStyle = '#FACC15';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(4, 4, 312, 172);
+
+    ctx.fillStyle = '#7F1D1D';
+    ctx.beginPath();
+    ctx.arc(160, 70, 36, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#FACC15';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    const initials =
+      teacherName
+        .split(' ')
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase() || 'OP';
+    ctx.fillStyle = '#FEF08A';
+    ctx.font = 'bold 24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(initials, 160, 70);
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText(teacherName, 160, 125);
+
+    ctx.fillStyle = '#4ADE80';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('🎙️ Audio en Vivo · Explicando Pizarra', 160, 145);
+  }
+
+  const stream = (canvas as any).captureStream
+    ? (canvas as any).captureStream(5)
+    : (canvas as any).mozCaptureStream?.(5);
+  return stream.getVideoTracks()[0];
+}
+
+export interface BroadcasterCleanup {
+  (): void;
+  stop: () => void;
+  replaceTrack: (newTrack: MediaStreamTrack) => Promise<void>;
+  updateStream: (newStream: MediaStream) => void;
+}
+
+/**
  * ------------------------------------------------------------------------------
- * 1. MODO PROFESOR (BROADCASTER): TRANSMITE SU CÁMARA/PANTALLA A TODOS LOS ALUMNOS
+ * 1. MODO PROFESOR (BROADCASTER): TRANSMITE SU CÁMARA/PANTALLA/MICRÓFONO A TODOS LOS ALUMNOS
  * ------------------------------------------------------------------------------
  */
 export function startTeacherBroadcast(
   localStream: MediaStream,
   onViewerCountChange?: (count: number) => void
-): () => void {
+): BroadcasterCleanup {
   if (!db) {
     console.warn('⚠️ [WebRTC Broadcaster] Firestore no inicializado.');
-    return () => {};
+    const noop: any = () => {};
+    noop.stop = noop;
+    noop.replaceTrack = async () => {};
+    noop.updateStream = () => {};
+    return noop as BroadcasterCleanup;
   }
 
+  let activeLocalStream = localStream;
   const peerConnections = new Map<string, RTCPeerConnection>();
   const docUnsubscribers = new Map<string, () => void>();
 
-  console.info('📡 [WebRTC Broadcaster] Iniciando transmisión del docente con', localStream.getTracks().length, 'pistas.');
+  console.info('📡 [WebRTC Broadcaster] Iniciando transmisión del docente con', activeLocalStream.getTracks().length, 'pistas.');
 
   // Escuchar solicitudes de visualización de los alumnos en la colección 'live_webrtc_signals'
   const signalsCol = collection(db, 'live_webrtc_signals');
@@ -105,8 +170,8 @@ export function startTeacherBroadcast(
           onViewerCountChange?.(peerConnections.size);
 
           // Adjuntar todas las pistas de audio y video del docente
-          localStream.getTracks().forEach((track) => {
-            pc?.addTrack(track, localStream);
+          activeLocalStream.getTracks().forEach((track) => {
+            pc?.addTrack(track, activeLocalStream);
           });
 
           // Enviar candidatos ICE del docente a Firestore
@@ -179,8 +244,36 @@ export function startTeacherBroadcast(
     });
   });
 
-  // Función de limpieza para cuando el docente apaga la cámara o finaliza la clase
-  return () => {
+  // Reemplazar pista (ej. alternar de avatar a cámara web real o viceversa) sin reiniciar la llamada
+  const replaceTrack = async (newTrack: MediaStreamTrack) => {
+    // Actualizar pista en el stream maestro
+    const oldTracks = activeLocalStream.getTracks().filter((t) => t.kind === newTrack.kind);
+    oldTracks.forEach((t) => {
+      activeLocalStream.removeTrack(t);
+      if (t !== newTrack) t.stop();
+    });
+    activeLocalStream.addTrack(newTrack);
+
+    for (const [viewerId, pc] of peerConnections.entries()) {
+      try {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === newTrack.kind);
+        if (sender) {
+          await sender.replaceTrack(newTrack);
+        } else {
+          pc.addTrack(newTrack, activeLocalStream);
+        }
+      } catch (err) {
+        console.warn('Error reemplazando pista para alumno', viewerId, err);
+      }
+    }
+  };
+
+  const updateStream = (newStream: MediaStream) => {
+    activeLocalStream = newStream;
+  };
+
+  // Función de limpieza para cuando el docente apaga la transmisión o finaliza la clase
+  const stopFn: any = () => {
     unsubscribeAll();
     docUnsubscribers.forEach((unsub) => unsub());
     docUnsubscribers.clear();
@@ -189,6 +282,12 @@ export function startTeacherBroadcast(
     onViewerCountChange?.(0);
     console.info('📡 [WebRTC Broadcaster] Transmisión del docente finalizada.');
   };
+
+  stopFn.stop = stopFn;
+  stopFn.replaceTrack = replaceTrack;
+  stopFn.updateStream = updateStream;
+
+  return stopFn as BroadcasterCleanup;
 }
 
 /**
