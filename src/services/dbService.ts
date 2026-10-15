@@ -210,15 +210,17 @@ export async function saveUser(user: UserProfile): Promise<void> {
     firstNameLower: firstName,
   };
 
+  const cleanPayload = JSON.parse(JSON.stringify(userPayload));
+
   if (db) {
     try {
       // Guardar con su ID único, su código y su primer nombre para consulta directa ultra-rápida
-      await setDoc(doc(db, 'users', user.id), userPayload, { merge: true });
+      await setDoc(doc(db, 'users', user.id), cleanPayload, { merge: true });
       if (normalizedCode) {
-        await setDoc(doc(db, 'users', normalizedCode), userPayload, { merge: true });
+        await setDoc(doc(db, 'users', normalizedCode), cleanPayload, { merge: true });
       }
       if (firstName && firstName !== normalizedCode) {
-        await setDoc(doc(db, 'users', firstName), userPayload, { merge: true });
+        await setDoc(doc(db, 'users', firstName), cleanPayload, { merge: true });
       }
       console.info(`✅ [Firestore] Usuario ${user.name} (${user.code}) guardado en la nube exitosamente.`);
     } catch (err: any) {
@@ -302,7 +304,8 @@ export async function updateLiveClass(
   if (isFirebaseConfigured() && db) {
     try {
       const liveDocRef = doc(db, 'live_classes', 'active_session');
-      await setDoc(liveDocRef, data, { merge: true });
+      const cleanData = JSON.parse(JSON.stringify(data));
+      await setDoc(liveDocRef, cleanData, { merge: true });
     } catch (err) {
       console.error('Error actualizando sesión en vivo en Firestore:', err);
     }

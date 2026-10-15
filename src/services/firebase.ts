@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, type Firestore } from 'firebase/firestore';
 
 /**
  * ==============================================================================
@@ -26,7 +26,14 @@ let db: Firestore | null = null;
 
 try {
   app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-  db = getFirestore(app);
+  try {
+    db = initializeFirestore(app, {
+      ignoreUndefinedProperties: true,
+      experimentalAutoDetectLongPolling: true,
+    });
+  } catch {
+    db = getFirestore(app);
+  }
   console.info('🔥 [Firebase] Conectado exitosamente a Firestore (intranet-oppenheimer).');
 } catch (error) {
   console.warn('⚠️ [Firebase] Error inicializando Firebase SDK:', error);
