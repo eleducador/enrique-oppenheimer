@@ -157,10 +157,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
     onAddUser(createdUser);
 
-    setSuccessMessage(`Usuario ${createdUser.name} (${createdUser.code}) creado con éxito.`);
+    setSuccessMessage(
+      `¡Cuenta creada con éxito! Usuario: ${createdUser.code} | Contraseña: ${createdUser.password}`
+    );
     onSendNotification(
       'Nuevo Usuario Registrado',
-      `Se dio de alta al usuario ${createdUser.name} con código institucional ${createdUser.code}.`
+      `Se dio de alta a ${createdUser.name} · Usuario: ${createdUser.code} · Clave: ${createdUser.password}`
     );
 
     // Reset form with new code
@@ -170,7 +172,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
     setTimeout(() => {
       setSuccessMessage('');
-    }, 4000);
+    }, 12000);
   };
 
   const togglePasswordVisibility = (userId: string) => {

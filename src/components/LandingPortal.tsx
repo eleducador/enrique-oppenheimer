@@ -138,7 +138,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
               {/* Cuadro de Usuario */}
               <div>
                 <label className="block text-xs font-semibold text-slate-200 mb-1.5">
-                  Usuario
+                  Usuario o Código Institucional
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
@@ -151,7 +151,7 @@ export const LandingPortal: React.FC<LandingPortalProps> = ({
                       setUserCode(e.target.value);
                       setErrorMessage('');
                     }}
-                    placeholder="Ingresa tu usuario institucional"
+                    placeholder="Código (ej. CEO-2026-...) o tu Nombre"
                     className="w-full pl-10 pr-3.5 py-3 text-xs font-mono-tabular rounded-xl border border-white/25 bg-white/10 text-white placeholder-slate-400 focus:outline-none focus:border-[#FACC15] focus:bg-white/15 focus:ring-1 focus:ring-[#FACC15] transition-all"
                     required
                     autoComplete="username"
