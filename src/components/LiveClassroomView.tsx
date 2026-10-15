@@ -162,12 +162,16 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
     }
   }, [session.isLive, currentUser.id, session.participants]);
 
-  // 2. Sync: When teacher turns on/off Whiteboard Projection, students automatically switch stage mode!
+  // 2. Sync: When teacher turns on/off Whiteboard Projection or Screen Share, students automatically switch stage mode!
   useEffect(() => {
-    if (!isTeacherOrAdmin && session.isWhiteboardProjected !== undefined) {
-      setActiveStageMode(session.isWhiteboardProjected ? 'whiteboard' : 'video');
+    if (!isTeacherOrAdmin) {
+      if (session.isScreenSharing) {
+        setActiveStageMode('video');
+      } else if (session.isWhiteboardProjected !== undefined) {
+        setActiveStageMode(session.isWhiteboardProjected ? 'whiteboard' : 'video');
+      }
     }
-  }, [session.isWhiteboardProjected, isTeacherOrAdmin]);
+  }, [session.isScreenSharing, session.isWhiteboardProjected, isTeacherOrAdmin]);
 
   // 3. Sync: When teacher changes whiteboard sub-tab ('notes' vs 'canvas'), students follow automatically!
   useEffect(() => {
@@ -554,7 +558,10 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
     if (!isScreenSharing) {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
+          video: {
+            cursor: 'always',
+            displaySurface: 'monitor',
+          } as any,
           audio: true,
         });
         const screenTrack = screenStream.getVideoTracks()[0];
@@ -563,27 +570,49 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
         }
         webcamTrackRef.current = screenTrack;
 
+        if (avatarTrackRef.current) {
+          avatarTrackRef.current.stop();
+          avatarTrackRef.current = null;
+        }
+
         if (broadcasterControllerRef.current) {
           await broadcasterControllerRef.current.replaceTrack(screenTrack);
         }
 
-        if (videoRef.current) videoRef.current.srcObject = new MediaStream([screenTrack]);
-        if (pipVideoRef.current) pipVideoRef.current.srcObject = new MediaStream([screenTrack]);
+        const previewStream = new MediaStream([screenTrack]);
+        if (videoRef.current) {
+          videoRef.current.srcObject = previewStream;
+          videoRef.current.muted = true;
+        }
+        if (pipVideoRef.current) {
+          pipVideoRef.current.srcObject = previewStream;
+          pipVideoRef.current.muted = true;
+        }
+
         setIsCamOn(true);
         setIsScreenSharing(true);
-        updateLiveCamState(true, undefined, true);
-        updateLiveBroadcastState(true, isMicOn, true, undefined, true);
+        setActiveStageMode('video');
+        handleForceProject(false);
+
+        await updateLiveCamState(true, undefined, true);
+        await updateLiveBroadcastState(true, isMicOn, true, undefined, true);
 
         screenTrack.onended = async () => {
           setIsScreenSharing(false);
           setIsCamOn(false);
+          if (webcamTrackRef.current) {
+            webcamTrackRef.current.stop();
+            webcamTrackRef.current = null;
+          }
           const avatarTrack = createAvatarVideoTrack(currentUser.name);
           avatarTrackRef.current = avatarTrack;
           if (broadcasterControllerRef.current) {
             await broadcasterControllerRef.current.replaceTrack(avatarTrack);
           }
-          updateLiveCamState(false, '', false);
-          updateLiveBroadcastState(true, isMicOn, false, '', false);
+          if (videoRef.current) videoRef.current.srcObject = null;
+          if (pipVideoRef.current) pipVideoRef.current.srcObject = null;
+          await updateLiveCamState(false, '', false);
+          await updateLiveBroadcastState(true, isMicOn, false, '', false);
         };
       } catch (err) {
         console.warn('Pantalla cancelada por usuario:', err);
@@ -591,13 +620,19 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
     } else {
       setIsScreenSharing(false);
       setIsCamOn(false);
+      if (webcamTrackRef.current) {
+        webcamTrackRef.current.stop();
+        webcamTrackRef.current = null;
+      }
       const avatarTrack = createAvatarVideoTrack(currentUser.name);
       avatarTrackRef.current = avatarTrack;
       if (broadcasterControllerRef.current) {
         await broadcasterControllerRef.current.replaceTrack(avatarTrack);
       }
-      updateLiveCamState(false, '', false);
-      updateLiveBroadcastState(true, isMicOn, false, '', false);
+      if (videoRef.current) videoRef.current.srcObject = null;
+      if (pipVideoRef.current) pipVideoRef.current.srcObject = null;
+      await updateLiveCamState(false, '', false);
+      await updateLiveBroadcastState(true, isMicOn, false, '', false);
     }
   };
 
@@ -791,8 +826,16 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
         {session.isLive && (
           <div className="flex items-center gap-2 shrink-0">
+            {/* Status Indicator for Screen Sharing */}
+            {(session.isScreenSharing || isScreenSharing) && (
+              <span className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-purple-950/90 border border-purple-400/80 text-purple-200 text-xs font-bold shadow-lg animate-pulse">
+                <ScreenShare className="w-3.5 h-3.5 text-purple-300" />
+                <span>Pantalla en Vivo</span>
+              </span>
+            )}
+
             {/* Status Indicator for projection */}
-            {session.isWhiteboardProjected && (
+            {session.isWhiteboardProjected && !session.isScreenSharing && !isScreenSharing && (
               <span className="hidden md:flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-950/80 border border-amber-400/60 text-[#FEF08A] text-xs font-bold animate-pulse">
                 <Tv className="w-3.5 h-3.5 text-[#FACC15]" />
                 <span>Pizarra Proyectada</span>
@@ -815,8 +858,14 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                     : 'text-slate-300 hover:text-white'
                 }`}
               >
-                <Video className="w-3.5 h-3.5 text-[#FACC15]" />
-                <span className="hidden sm:inline">Cámara</span>
+                {session.isScreenSharing || isScreenSharing ? (
+                  <ScreenShare className="w-3.5 h-3.5 text-purple-300" />
+                ) : (
+                  <Video className="w-3.5 h-3.5 text-[#FACC15]" />
+                )}
+                <span className="hidden sm:inline">
+                  {session.isScreenSharing || isScreenSharing ? 'Pantalla' : 'Cámara'}
+                </span>
               </button>
 
               <button
@@ -959,7 +1008,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                         autoPlay
                         playsInline
                         muted
-                        className="w-full h-full object-cover rounded-2xl"
+                        className={`w-full h-full ${isScreenSharing ? 'object-contain bg-black' : 'object-cover'} rounded-2xl`}
                       />
                       {isScreenSharing && (
                         <div className="absolute top-4 right-4 px-3 py-1.5 rounded-xl bg-purple-600/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg">
@@ -987,14 +1036,21 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                   /* Student remote view */
                   session.isCamActive ? (
                     remoteStream ? (
-                      <div className="relative w-full h-full">
+                      <div className="relative w-full h-full flex items-center justify-center bg-black rounded-2xl overflow-hidden">
                         <video
                           ref={remoteVideoRef}
                           autoPlay
                           playsInline
                           muted={studentAudioMuted}
-                          className="w-full h-full object-cover rounded-2xl"
+                          className={`w-full h-full ${session.isScreenSharing ? 'object-contain bg-black' : 'object-cover'} rounded-2xl`}
                         />
+                        {/* Indicador de pantalla compartida del docente */}
+                        {session.isScreenSharing && (
+                          <div className="absolute top-4 left-4 px-3 py-1.5 rounded-xl bg-purple-700/95 text-white text-xs font-bold flex items-center gap-2 shadow-2xl border border-purple-300 animate-pulse">
+                            <ScreenShare className="w-4 h-4 text-purple-200" />
+                            <span>Docente Compartiendo Pantalla / Diapositivas</span>
+                          </div>
+                        )}
                         {/* Audio control badge */}
                         <div className="absolute top-4 right-4 flex items-center gap-2">
                           <button
@@ -1516,12 +1572,15 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                     onClick={handleToggleScreenShare}
                     className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                       isScreenSharing
-                        ? 'bg-purple-700 border-purple-300 text-white shadow-lg animate-pulse'
+                        ? 'bg-purple-700 hover:bg-purple-800 border-purple-300 text-white shadow-lg animate-pulse'
                         : 'bg-white/10 hover:bg-white/20 border-white/20 text-slate-300'
                     }`}
                     title={isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla / diapositivas'}
                   >
-                    <ScreenShare className="w-4 h-4" />
+                    <ScreenShare className="w-4 h-4 text-purple-300" />
+                    <span className="hidden sm:inline">
+                      {isScreenSharing ? 'Dejar de Compartir' : 'Compartir Pantalla'}
+                    </span>
                   </button>
                 )}
 
