@@ -78,12 +78,13 @@ import {
   saveCourses,
   subscribeSchedules,
   saveSchedules,
+  getStoredUsers,
 } from './services/dbService';
 import { isFirebaseConfigured } from './services/firebase';
 
 export function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [systemUsers, setSystemUsers] = useState<UserProfile[]>(INITIAL_SYSTEM_USERS);
+  const [systemUsers, setSystemUsers] = useState<UserProfile[]>(() => getStoredUsers());
   const [currentUser, setCurrentUser] = useState<UserProfile>(INITIAL_SYSTEM_USERS[0]);
   const [activeTab, setActiveTab] = useState<
     | 'inicio'
@@ -329,9 +330,22 @@ export function App() {
   };
 
   // Admin user management handlers
-  const handleAddUser = (newUser: UserProfile) => {
+  const handleAddUser = async (newUser: UserProfile) => {
     setSystemUsers((prev) => [newUser, ...prev]);
-    saveUser(newUser); // Persist to Firestore & LocalStorage
+    try {
+      await saveUser(newUser); // Persist to Firestore & LocalStorage
+      triggerInstantPushNotification(
+        'Cuenta Sincronizada en la Nube',
+        `Usuario ${newUser.code} (${newUser.name}) guardado en Firebase. Ya puede ingresar desde cualquier celular o PC.`,
+        'Institucional'
+      );
+    } catch (err: any) {
+      triggerInstantPushNotification(
+        'Alerta de Permisos Firebase',
+        `Usuario guardado localmente, pero Firebase bloqueó el acceso (${err?.code || err?.message}). Revisa la pestaña "Reglas" en Firebase.`,
+        'Institucional'
+      );
+    }
 
     // If new user is a student, automatically prepare student progress and attendance
     if (newUser.role === 'estudiante') {
