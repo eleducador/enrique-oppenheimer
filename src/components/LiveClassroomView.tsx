@@ -80,6 +80,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
+  const [mobileViewTab, setMobileViewTab] = useState<'stage' | 'chat'>('stage');
   
   // Remote WebRTC Media State (for Students)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
@@ -782,7 +783,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
   const raisedHandsCount = session.participants.filter((p) => p.hasHandRaised).length;
 
   return (
-    <div className="h-[calc(100vh-5.5rem)] rounded-3xl bg-black/75 backdrop-blur-2xl border border-white/15 shadow-2xl flex flex-col overflow-hidden text-slate-100">
+    <div className="h-full min-h-[520px] max-h-[calc(100dvh-4rem)] sm:h-[calc(100vh-5.5rem)] rounded-2xl sm:rounded-3xl bg-black/85 backdrop-blur-2xl border border-white/15 shadow-2xl flex flex-col overflow-hidden text-slate-100">
       {/* Reproductor de audio continuo para alumnos: voz en vivo ininterrumpida de la maestra */}
       {!isTeacherOrAdmin && (
         <audio
@@ -883,7 +884,43 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                 }`}
               >
                 <PenTool className="w-3.5 h-3.5 text-[#FEF08A]" />
-                <span>Pizarra Digital</span>
+                <span className="hidden sm:inline">Pizarra Digital</span>
+                <span className="sm:hidden">Pizarra</span>
+              </button>
+            </div>
+
+            {/* Selector móvil rápido entre Clase (Pantalla completa) y Chat */}
+            <div className="flex lg:hidden bg-white/10 p-0.5 rounded-xl border border-white/15 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => setMobileViewTab('stage')}
+                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all ${
+                  mobileViewTab === 'stage'
+                    ? 'bg-[#7F1D1D] text-white shadow border border-[#FACC15]/40'
+                    : 'text-slate-300'
+                }`}
+                title="Ver Clase en Vivo a Pantalla Completa"
+              >
+                <Tv className="w-3.5 h-3.5 text-[#FACC15]" />
+                <span className="text-[11px]">Clase</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileViewTab('chat')}
+                className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all relative ${
+                  mobileViewTab === 'chat'
+                    ? 'bg-[#7F1D1D] text-white shadow border border-[#FACC15]/40'
+                    : 'text-slate-300'
+                }`}
+                title="Ver Chat en Vivo"
+              >
+                <MessageSquare className="w-3.5 h-3.5 text-[#FACC15]" />
+                <span className="text-[11px]">Chat</span>
+                {session.chatMessages.length > 0 && (
+                  <span className="px-1 py-0.2 rounded-full text-[9px] bg-amber-500 text-slate-950 font-bold">
+                    {session.chatMessages.length}
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -995,35 +1032,35 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
         /* Active Live Class Workspace */
         <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
           {/* Main Stage (70% on Desktop) */}
-          <div className="flex-1 flex flex-col min-w-0 bg-slate-950/80 p-3 sm:p-4 space-y-3 relative overflow-hidden">
+          <div className={`flex-1 flex flex-col min-w-0 bg-slate-950/80 p-2 sm:p-4 space-y-2 sm:space-y-3 relative overflow-hidden ${mobileViewTab === 'chat' ? 'hidden lg:flex' : 'flex'}`}>
             {activeStageMode === 'video' ? (
-              /* Main Video Stage */
-              <div className="flex-1 rounded-2xl overflow-hidden bg-black/90 border border-white/20 relative flex items-center justify-center shadow-inner">
+              /* Main Video Stage - PERFECTAMENTE CENTRADO EN PC, TABLETS Y MÓVILES */
+              <div className="flex-1 rounded-2xl overflow-hidden bg-black border border-white/20 relative flex items-center justify-center shadow-inner w-full min-h-0">
                 {isTeacherOrAdmin ? (
                   /* Teacher local view */
                   isCamOn ? (
-                    <div className="relative w-full h-full">
+                    <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
                       <video
                         ref={videoRef}
                         autoPlay
                         playsInline
                         muted
-                        className={`w-full h-full ${isScreenSharing ? 'object-contain bg-black' : 'object-cover'} rounded-2xl`}
+                        className="w-full h-full max-h-full max-w-full object-contain mx-auto my-auto rounded-xl sm:rounded-2xl"
                       />
                       {isScreenSharing && (
-                        <div className="absolute top-4 right-4 px-3 py-1.5 rounded-xl bg-purple-600/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg">
+                        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-purple-600/90 text-white text-[11px] sm:text-xs font-bold flex items-center gap-1.5 shadow-lg">
                           <ScreenShare className="w-3.5 h-3.5" />
                           <span>Compartiendo Pantalla</span>
                         </div>
                       )}
                     </div>
                   ) : (
-                    <div className="text-center space-y-4 p-6">
-                      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#7F1D1D] to-[#991B1B] border-4 border-[#FACC15] flex items-center justify-center mx-auto shadow-2xl text-3xl font-black text-[#FEF08A]">
+                    <div className="text-center space-y-4 p-6 mx-auto my-auto">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-[#7F1D1D] to-[#991B1B] border-4 border-[#FACC15] flex items-center justify-center mx-auto shadow-2xl text-2xl sm:text-3xl font-black text-[#FEF08A]">
                         {currentUser.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
                       </div>
                       <div>
-                        <h4 className="text-lg font-bold text-white font-display">
+                        <h4 className="text-base sm:text-lg font-bold text-white font-display">
                           {currentUser.name}
                         </h4>
                         <p className="text-xs text-[#FEF08A] font-medium">
@@ -1036,27 +1073,27 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                   /* Student remote view */
                   session.isCamActive ? (
                     remoteStream ? (
-                      <div className="relative w-full h-full flex items-center justify-center bg-black rounded-2xl overflow-hidden">
+                      <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
                         <video
                           ref={remoteVideoRef}
                           autoPlay
                           playsInline
                           muted={studentAudioMuted}
-                          className={`w-full h-full ${session.isScreenSharing ? 'object-contain bg-black' : 'object-cover'} rounded-2xl`}
+                          className="w-full h-full max-h-full max-w-full object-contain mx-auto my-auto rounded-xl sm:rounded-2xl"
                         />
                         {/* Indicador de pantalla compartida del docente */}
                         {session.isScreenSharing && (
-                          <div className="absolute top-4 left-4 px-3 py-1.5 rounded-xl bg-purple-700/95 text-white text-xs font-bold flex items-center gap-2 shadow-2xl border border-purple-300 animate-pulse">
-                            <ScreenShare className="w-4 h-4 text-purple-200" />
-                            <span>Docente Compartiendo Pantalla / Diapositivas</span>
+                          <div className="absolute top-3 left-3 sm:top-4 sm:left-4 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl bg-purple-700/95 text-white text-[11px] sm:text-xs font-bold flex items-center gap-1.5 sm:gap-2 shadow-2xl border border-purple-300 animate-pulse">
+                            <ScreenShare className="w-3.5 h-3.5 text-purple-200" />
+                            <span>Docente Compartiendo Pantalla</span>
                           </div>
                         )}
                         {/* Audio control badge */}
-                        <div className="absolute top-4 right-4 flex items-center gap-2">
+                        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 flex items-center gap-2">
                           <button
                             type="button"
                             onClick={() => setStudentAudioMuted(!studentAudioMuted)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md cursor-pointer transition-all ${
+                            className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md cursor-pointer transition-all ${
                               studentAudioMuted
                                 ? 'bg-red-600/90 text-white border border-red-400'
                                 : 'bg-black/70 text-emerald-300 border border-emerald-400/40'
@@ -1064,18 +1101,18 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                             title={studentAudioMuted ? 'Activar sonido de la maestra' : 'Silenciar sonido'}
                           >
                             {studentAudioMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
-                            <span>{studentAudioMuted ? 'Audio Silenciado' : 'Audio en Directo'}</span>
+                            <span>{studentAudioMuted ? 'Silenciado' : 'Audio en Vivo'}</span>
                           </button>
                         </div>
                       </div>
                     ) : session.teacherLiveFrame ? (
-                      <div className="relative w-full h-full flex items-center justify-center bg-black rounded-2xl overflow-hidden">
+                      <div className="relative w-full h-full flex items-center justify-center bg-black overflow-hidden">
                         <img
                           src={session.teacherLiveFrame}
                           alt="Transmisión en Vivo"
-                          className="w-full h-full object-cover"
+                          className="w-full h-full max-h-full max-w-full object-contain mx-auto my-auto rounded-xl sm:rounded-2xl"
                         />
-                        <div className="absolute top-4 left-4 px-3 py-1 rounded-xl bg-red-600/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg">
+                        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 px-2.5 py-1 sm:px-3 sm:py-1 rounded-xl bg-red-600/90 text-white text-[11px] sm:text-xs font-bold flex items-center gap-1.5 shadow-lg">
                           <span className="w-2 h-2 rounded-full bg-white animate-ping" />
                           <span>🔴 En Directo · Docente Transmitiendo</span>
                         </div>
@@ -1409,11 +1446,11 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
                 {/* Floating Picture-in-Picture (PiP) Window for Teacher Video while Whiteboard is Projected */}
                 {showPiP && (
-                  <div className="absolute bottom-4 right-4 z-20 w-44 sm:w-56 rounded-2xl bg-black/90 border-2 border-[#FACC15]/60 shadow-2xl overflow-hidden animate-slideIn">
-                    <div className="h-6 px-2.5 bg-black/80 flex items-center justify-between border-b border-white/15 text-[10px] text-white">
-                      <div className="flex items-center gap-1.5 truncate">
+                  <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-20 w-32 sm:w-44 md:w-56 rounded-xl sm:rounded-2xl bg-black/90 border-2 border-[#FACC15]/60 shadow-2xl overflow-hidden animate-slideIn">
+                    <div className="h-6 px-2 sm:px-2.5 bg-black/80 flex items-center justify-between border-b border-white/15 text-[10px] text-white">
+                      <div className="flex items-center gap-1 sm:gap-1.5 truncate">
                         <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                        <span className="font-bold truncate">{session.teacherName}</span>
+                        <span className="font-bold truncate text-[9px] sm:text-[10px]">{session.teacherName.split(' ')[0]}</span>
                       </div>
                       <button
                         type="button"
@@ -1425,7 +1462,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                       </button>
                     </div>
 
-                    <div className="h-28 sm:h-32 bg-slate-900 flex items-center justify-center relative">
+                    <div className="h-20 sm:h-28 md:h-32 bg-slate-900 flex items-center justify-center relative">
                       {isTeacherOrAdmin ? (
                         isCamOn ? (
                           <video
@@ -1433,15 +1470,15 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                             autoPlay
                             playsInline
                             muted
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-contain mx-auto my-auto"
                           />
                         ) : (
-                          <div className="text-center p-2">
-                            <div className="w-10 h-10 rounded-full bg-[#7F1D1D] border-2 border-[#FACC15] flex items-center justify-center mx-auto text-sm font-bold text-[#FEF08A]">
+                          <div className="text-center p-1 sm:p-2">
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#7F1D1D] border-2 border-[#FACC15] flex items-center justify-center mx-auto text-xs sm:text-sm font-bold text-[#FEF08A]">
                               {currentUser.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
                             </div>
-                            <p className="text-[10px] text-[#FEF08A] font-semibold mt-1">
-                              {currentUser.name}
+                            <p className="text-[9px] sm:text-[10px] text-[#FEF08A] font-semibold mt-0.5 truncate">
+                              {currentUser.name.split(' ')[0]}
                             </p>
                           </div>
                         )
@@ -1453,13 +1490,13 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                               autoPlay
                               playsInline
                               muted={studentAudioMuted}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-contain mx-auto my-auto"
                             />
                           ) : session.teacherLiveFrame ? (
                             <img
                               src={session.teacherLiveFrame}
                               alt="Miniatura Docente"
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-contain mx-auto my-auto"
                             />
                           ) : (
                             <div className="text-center p-2">
@@ -1629,6 +1666,20 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                 >
                   <PenTool className="w-4 h-4" />
                 </button>
+
+                {/* Mobile quick toggle for chat */}
+                <button
+                  type="button"
+                  onClick={() => setMobileViewTab(mobileViewTab === 'stage' ? 'chat' : 'stage')}
+                  className={`lg:hidden p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    mobileViewTab === 'chat'
+                      ? 'bg-[#7F1D1D] border-[#FACC15]/60 text-[#FEF08A] shadow'
+                      : 'bg-white/10 hover:bg-white/20 border-white/20 text-slate-300'
+                  }`}
+                  title="Alternar entre Clase y Chat"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                </button>
               </div>
 
               {/* Hand raise button for students */}
@@ -1675,8 +1726,27 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
             </div>
           </div>
 
-          {/* Right Sidebar: In-Call Live Chat & Participants (30% on Desktop) */}
-          <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col bg-black/60 shrink-0 min-h-0">
+          {/* Right Sidebar: In-Call Live Chat & Participants (30% on Desktop, Toggleable on Mobile) */}
+          <div
+            className={`w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col bg-black/80 shrink-0 min-h-0 ${
+              mobileViewTab === 'chat' ? 'flex flex-1' : 'hidden lg:flex'
+            }`}
+          >
+            {/* Header móvil para volver a la clase en pantalla completa */}
+            <div className="lg:hidden p-2.5 bg-gradient-to-r from-[#7F1D1D] to-[#991B1B] border-b border-[#FACC15]/30 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setMobileViewTab('stage')}
+                className="px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black/80 border border-white/20 text-[#FEF08A] text-xs font-bold flex items-center gap-1.5 shadow"
+              >
+                <Tv className="w-3.5 h-3.5 text-[#FACC15]" />
+                <span>← Volver a Ver la Clase Completa</span>
+              </button>
+              <span className="text-[11px] text-[#FEF08A] font-bold">
+                {activeTab === 'chat' ? 'Chat en Vivo' : 'Participantes'}
+              </span>
+            </div>
+
             {/* Tab switch (Chat vs Participantes) */}
             <div className="flex border-b border-white/10 bg-black/40">
               <button
