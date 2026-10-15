@@ -38,6 +38,14 @@ import {
   LiveClassSession,
   LiveClassParticipant,
 } from '../types';
+import {
+  startTeacherBroadcast,
+  startStudentViewer,
+} from '../services/webrtcService';
+import {
+  updateLiveCamState,
+  joinLiveClass,
+} from '../services/dbService';
 
 interface LiveClassroomViewProps {
   currentUser: UserProfile;
@@ -48,7 +56,7 @@ interface LiveClassroomViewProps {
   onEndClass: () => void;
   onToggleHandRaise: (participantId: string) => void;
   onSendLiveChatMessage: (text: string) => void;
-  onUpdateWhiteboard: (notes: string, isProjected?: boolean, drawingData?: string) => void;
+  onUpdateWhiteboard: (notes: string, isProjected?: boolean, drawingData?: string, activeTab?: 'notes' | 'canvas') => void;
 }
 
 export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
@@ -70,13 +78,25 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
   const [isCamOn, setIsCamOn] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'participants'>('chat');
   
+  // Remote WebRTC Media State (for Students)
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remotePipVideoRef = useRef<HTMLVideoElement>(null);
+  const [webrtcStatus, setWebrtcStatus] = useState<'idle' | 'connecting' | 'connected' | 'disconnected' | 'failed'>('idle');
+  const [studentAudioMuted, setStudentAudioMuted] = useState(false);
+  const [viewerCount, setViewerCount] = useState(0);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const frameIntervalRef = useRef<any>(null);
+
   // Stage mode: 'video' or 'whiteboard'. If teacher has whiteboard projected, defaults to 'whiteboard'
   const [activeStageMode, setActiveStageMode] = useState<'video' | 'whiteboard'>(
     session.isWhiteboardProjected ? 'whiteboard' : 'video'
   );
 
   // Whiteboard Sub-mode: 'notes' (Fórmulas y texto estructurado) vs 'canvas' (Dibujo libre con tiza)
-  const [whiteboardTab, setWhiteboardTab] = useState<'notes' | 'canvas'>('notes');
+  const [whiteboardTab, setWhiteboardTab] = useState<'notes' | 'canvas'>(
+    session.whiteboardActiveTab || 'notes'
+  );
   const [whiteboardText, setWhiteboardText] = useState(session.whiteboardNotes || '');
   const [whiteboardEditorView, setWhiteboardEditorView] = useState<'split' | 'rendered' | 'edit'>('split');
   const [syncToast, setSyncToast] = useState(false);
@@ -105,14 +125,48 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const debounceTimerRef = useRef<any>(null);
 
-  // Sync: When teacher turns on/off Whiteboard Projection, students automatically switch stage mode!
+  // 1. Auto-register current user into session.participants
+  useEffect(() => {
+    if (session.isLive && currentUser.id) {
+      const alreadyIn = session.participants.some((p) => p.id === currentUser.id);
+      if (!alreadyIn) {
+        const newPart: LiveClassParticipant = {
+          id: currentUser.id,
+          name: currentUser.name,
+          role: currentUser.role,
+          gradeId: currentUser.gradeId,
+          avatarInitials: currentUser.name
+            .split(' ')
+            .map((n) => n[0])
+            .slice(0, 2)
+            .join('')
+            .toUpperCase(),
+          avatarUrl: currentUser.avatarUrl,
+          isMuted: true,
+          isVideoOn: false,
+          hasHandRaised: false,
+          joinedAt: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+        };
+        joinLiveClass(newPart);
+      }
+    }
+  }, [session.isLive, currentUser.id, session.participants]);
+
+  // 2. Sync: When teacher turns on/off Whiteboard Projection, students automatically switch stage mode!
   useEffect(() => {
     if (!isTeacherOrAdmin && session.isWhiteboardProjected !== undefined) {
       setActiveStageMode(session.isWhiteboardProjected ? 'whiteboard' : 'video');
     }
   }, [session.isWhiteboardProjected, isTeacherOrAdmin]);
 
-  // Sync: When session.whiteboardNotes updates from server, sync student view without blur!
+  // 3. Sync: When teacher changes whiteboard sub-tab ('notes' vs 'canvas'), students follow automatically!
+  useEffect(() => {
+    if (!isTeacherOrAdmin && session.whiteboardActiveTab) {
+      setWhiteboardTab(session.whiteboardActiveTab);
+    }
+  }, [session.whiteboardActiveTab, isTeacherOrAdmin]);
+
+  // 4. Sync: When session.whiteboardNotes updates from server, sync student view
   useEffect(() => {
     if (session.whiteboardNotes !== undefined) {
       if (!isTeacherOrAdmin || !whiteboardText) {
@@ -121,66 +175,214 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
     }
   }, [session.whiteboardNotes, isTeacherOrAdmin]);
 
-  // Sync: Load canvas drawing data if present
-  useEffect(() => {
-    if (session.whiteboardDrawingData && canvasRef.current) {
-      const img = new Image();
-      img.onload = () => {
-        const ctx = canvasRef.current?.getContext('2d');
-        if (ctx && canvasRef.current) {
-          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-          ctx.drawImage(img, 0, 0);
-        }
-      };
-      img.src = session.whiteboardDrawingData;
-    }
-  }, [session.whiteboardDrawingData]);
+  // 5. Canvas Redraw helper: redrawn on drawingData update or tab switch
+  const redrawCanvas = (targetData?: string) => {
+    const src = targetData || session.whiteboardDrawingData;
+    if (!src || !canvasRef.current) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+      }
+    };
+    img.src = src;
+  };
 
-  // Manage real camera access when toggled on
   useEffect(() => {
+    redrawCanvas(session.whiteboardDrawingData);
+  }, [session.whiteboardDrawingData, whiteboardTab]);
+
+  // 6. DOCENTE: Iniciar transmisión de Cámara Web y Audio + WebRTC Broadcaster + Fallback de fotogramas
+  useEffect(() => {
+    if (!isTeacherOrAdmin) return;
+
+    let stopBroadcastFn: (() => void) | null = null;
+
     if (isCamOn && session.isLive) {
       navigator.mediaDevices
-        ?.getUserMedia({ video: { width: 1280, height: 720 }, audio: false })
+        ?.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+          audio: isMicOn,
+        })
         .then((stream) => {
           mediaStreamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
+            videoRef.current.muted = true;
           }
           if (pipVideoRef.current) {
             pipVideoRef.current.srcObject = stream;
+            pipVideoRef.current.muted = true;
           }
+
+          // Iniciar servidor WebRTC P2P
+          stopBroadcastFn = startTeacherBroadcast(stream, (count) => {
+            setViewerCount(count);
+          });
+
+          // Notificar a Firestore que la cámara de la maestra está activa
+          updateLiveCamState(true);
+
+          // Generador de fotogramas en vivo de respaldo (1 cuadro cada 1.5s comprimido a 480x270 JPEG)
+          const offCanvas = document.createElement('canvas');
+          offCanvas.width = 480;
+          offCanvas.height = 270;
+          const offCtx = offCanvas.getContext('2d');
+
+          if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+          frameIntervalRef.current = setInterval(() => {
+            if (videoRef.current && offCtx && videoRef.current.readyState >= 2) {
+              try {
+                offCtx.drawImage(videoRef.current, 0, 0, 480, 270);
+                const frameJpeg = offCanvas.toDataURL('image/jpeg', 0.5);
+                updateLiveCamState(true, frameJpeg, isScreenSharing);
+              } catch {
+                // Ignore capture glitches
+              }
+            }
+          }, 1500);
         })
         .catch((err) => {
-          console.warn('Webcam permission not granted or device missing, using animated pedagogical avatar:', err);
+          console.warn('Permiso de cámara no concedido o no disponible:', err);
+          setIsCamOn(false);
         });
     } else {
+      if (stopBroadcastFn) stopBroadcastFn();
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       }
+      updateLiveCamState(false, '', false);
     }
 
     return () => {
+      if (stopBroadcastFn) stopBroadcastFn();
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [isCamOn, session.isLive]);
+  }, [isCamOn, session.isLive, isTeacherOrAdmin, isMicOn]);
 
-  // Debounced auto-sync when teacher types in whiteboard
+  // 7. ESTUDIANTE: Recibir señal WebRTC de la maestra cuando isCamActive esté encendido
+  useEffect(() => {
+    if (isTeacherOrAdmin) return;
+
+    let stopViewerFn: (() => void) | null = null;
+
+    if (session.isLive && session.isCamActive) {
+      setWebrtcStatus('connecting');
+      stopViewerFn = startStudentViewer(
+        currentUser.id,
+        currentUser.name,
+        (stream) => {
+          setRemoteStream(stream);
+          setWebrtcStatus('connected');
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = stream;
+            remoteVideoRef.current.play().catch(() => {});
+          }
+          if (remotePipVideoRef.current) {
+            remotePipVideoRef.current.srcObject = stream;
+            remotePipVideoRef.current.play().catch(() => {});
+          }
+        },
+        (status) => {
+          setWebrtcStatus(status);
+        }
+      );
+    } else {
+      if (stopViewerFn) stopViewerFn();
+      setRemoteStream(null);
+      setWebrtcStatus('idle');
+    }
+
+    return () => {
+      if (stopViewerFn) stopViewerFn();
+    };
+  }, [session.isLive, session.isCamActive, currentUser.id, currentUser.name, isTeacherOrAdmin]);
+
+  // Mantener las etiquetas de video del alumno sincronizadas si cambia de modo
+  useEffect(() => {
+    if (remoteStream) {
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStream) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+      if (remotePipVideoRef.current && remotePipVideoRef.current.srcObject !== remoteStream) {
+        remotePipVideoRef.current.srcObject = remoteStream;
+        remotePipVideoRef.current.play().catch(() => {});
+      }
+    }
+  }, [remoteStream, activeStageMode, showPiP]);
+
+  // Compartir pantalla para docentes
+  const handleToggleScreenShare = async () => {
+    if (!isTeacherOrAdmin) return;
+    if (!isScreenSharing) {
+      try {
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: true,
+          audio: true,
+        });
+        mediaStreamRef.current = screenStream;
+        if (videoRef.current) videoRef.current.srcObject = screenStream;
+        if (pipVideoRef.current) pipVideoRef.current.srcObject = screenStream;
+        setIsCamOn(true);
+        setIsScreenSharing(true);
+        updateLiveCamState(true, undefined, true);
+
+        screenStream.getVideoTracks()[0].onended = () => {
+          setIsScreenSharing(false);
+          setIsCamOn(false);
+          updateLiveCamState(false, '', false);
+        };
+      } catch (err) {
+        console.warn('Pantalla cancelada por usuario:', err);
+      }
+    } else {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      }
+      setIsScreenSharing(false);
+      setIsCamOn(false);
+      updateLiveCamState(false, '', false);
+    }
+  };
+
+  // Debounced auto-sync when teacher types in whiteboard notes
   const handleWhiteboardChange = (newVal: string) => {
     setWhiteboardText(newVal);
     if (!isTeacherOrAdmin) return;
 
     if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     debounceTimerRef.current = setTimeout(() => {
-      onUpdateWhiteboard(newVal, isProjected, session.whiteboardDrawingData);
+      onUpdateWhiteboard(newVal, isProjected, session.whiteboardDrawingData, whiteboardTab);
     }, 400);
   };
 
-  // Explicit broadcast button
+  // Alternar sub-pestaña de pizarra (Fórmulas vs Lienzo)
+  const handleSwitchWhiteboardTab = (tab: 'notes' | 'canvas') => {
+    setWhiteboardTab(tab);
+    if (isTeacherOrAdmin) {
+      onUpdateWhiteboard(whiteboardText, isProjected, session.whiteboardDrawingData, tab);
+    }
+  };
+
+  // Botón de proyección explícita de pizarra a todos los alumnos
   const handleForceProject = (projectValue: boolean) => {
-    onUpdateWhiteboard(whiteboardText, projectValue, session.whiteboardDrawingData);
+    onUpdateWhiteboard(whiteboardText, projectValue, session.whiteboardDrawingData, whiteboardTab);
     setSyncToast(true);
     setTimeout(() => setSyncToast(false), 2000);
   };
@@ -198,7 +400,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
     setChatInput('');
   };
 
-  // --- CANVAS DRAWING METHODS ---
+  // --- CANVAS DRAWING METHODS (COMPRIMIDOS EN TIEMPO REAL) ---
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isTeacherOrAdmin) return;
     const canvas = canvasRef.current;
@@ -247,8 +449,9 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
     const canvas = canvasRef.current;
     if (canvas) {
-      const dataUrl = canvas.toDataURL('image/png');
-      onUpdateWhiteboard(whiteboardText, isProjected, dataUrl);
+      // Usar compresión JPEG para sincronización ultrarrápida sin sobrepasar límites de Firestore
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      onUpdateWhiteboard(whiteboardText, isProjected, dataUrl, whiteboardTab);
     }
   };
 
@@ -258,7 +461,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        onUpdateWhiteboard(whiteboardText, isProjected, '');
+        onUpdateWhiteboard(whiteboardText, isProjected, '', whiteboardTab);
       }
     }
   };
@@ -496,36 +699,135 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
             {activeStageMode === 'video' ? (
               /* Main Video Stage */
               <div className="flex-1 rounded-2xl overflow-hidden bg-black/90 border border-white/20 relative flex items-center justify-center shadow-inner">
-                {isCamOn ? (
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted={isTeacherOrAdmin}
-                    className="w-full h-full object-cover rounded-2xl"
-                  />
+                {isTeacherOrAdmin ? (
+                  /* Teacher local view */
+                  isCamOn ? (
+                    <div className="relative w-full h-full">
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover rounded-2xl"
+                      />
+                      {isScreenSharing && (
+                        <div className="absolute top-4 right-4 px-3 py-1.5 rounded-xl bg-purple-600/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg">
+                          <ScreenShare className="w-3.5 h-3.5" />
+                          <span>Compartiendo Pantalla</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center space-y-4 p-6">
+                      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#7F1D1D] to-[#991B1B] border-4 border-[#FACC15] flex items-center justify-center mx-auto shadow-2xl text-3xl font-black text-[#FEF08A]">
+                        {currentUser.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-bold text-white font-display">
+                          {currentUser.name}
+                        </h4>
+                        <p className="text-xs text-[#FEF08A] font-medium">
+                          Tu cámara está apagada. Haz clic en el botón de cámara abajo para transmitir en vivo.
+                        </p>
+                      </div>
+                    </div>
+                  )
                 ) : (
-                  <div className="text-center space-y-4 p-6">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#7F1D1D] to-[#991B1B] border-4 border-[#FACC15] flex items-center justify-center mx-auto shadow-2xl text-3xl font-black text-[#FEF08A]">
-                      {session.teacherName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                  /* Student remote view */
+                  session.isCamActive ? (
+                    remoteStream ? (
+                      <div className="relative w-full h-full">
+                        <video
+                          ref={remoteVideoRef}
+                          autoPlay
+                          playsInline
+                          muted={studentAudioMuted}
+                          className="w-full h-full object-cover rounded-2xl"
+                        />
+                        {/* Audio control badge */}
+                        <div className="absolute top-4 right-4 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setStudentAudioMuted(!studentAudioMuted)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-md cursor-pointer transition-all ${
+                              studentAudioMuted
+                                ? 'bg-red-600/90 text-white border border-red-400'
+                                : 'bg-black/70 text-emerald-300 border border-emerald-400/40'
+                            }`}
+                            title={studentAudioMuted ? 'Activar sonido de la maestra' : 'Silenciar sonido'}
+                          >
+                            {studentAudioMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5 text-emerald-400" />}
+                            <span>{studentAudioMuted ? 'Audio Silenciado' : 'Audio en Directo'}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : session.teacherLiveFrame ? (
+                      <div className="relative w-full h-full flex items-center justify-center bg-black rounded-2xl overflow-hidden">
+                        <img
+                          src={session.teacherLiveFrame}
+                          alt="Transmisión en Vivo"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-4 left-4 px-3 py-1 rounded-xl bg-red-600/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg">
+                          <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                          <span>🔴 En Directo · Docente Transmitiendo</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center space-y-4 p-6">
+                        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#7F1D1D] to-[#991B1B] border-4 border-[#FACC15] flex items-center justify-center mx-auto shadow-2xl text-3xl font-black text-[#FEF08A] animate-pulse">
+                          {session.teacherName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                        </div>
+                        <div>
+                          <h4 className="text-lg font-bold text-white font-display">
+                            {session.teacherName}
+                          </h4>
+                          <p className="text-xs text-[#FEF08A] font-medium flex items-center justify-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
+                            <span>Sintonizando transmisión en vivo de la maestra...</span>
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  ) : (
+                    <div className="text-center space-y-4 p-6">
+                      <div className="w-24 h-24 rounded-full bg-gradient-to-br from-[#7F1D1D] to-[#991B1B] border-4 border-[#FACC15] flex items-center justify-center mx-auto shadow-2xl text-3xl font-black text-[#FEF08A]">
+                        {session.teacherName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      </div>
+                      <div>
+                        <h4 className="text-lg font-bold text-white font-display">
+                          {session.teacherName}
+                        </h4>
+                        <p className="text-xs text-slate-300 font-medium">
+                          Docente Titular · Cámara apagada / Clase en curso
+                        </p>
+                        {session.isWhiteboardProjected && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveStageMode('whiteboard')}
+                            className="mt-3 px-4 py-1.5 rounded-xl bg-[#7F1D1D] hover:bg-[#991B1B] border border-[#FACC15] text-[#FEF08A] text-xs font-bold inline-flex items-center gap-1.5 shadow-lg cursor-pointer"
+                          >
+                            <PenTool className="w-3.5 h-3.5" />
+                            <span>Ver Pizarra Proyectada</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="text-lg font-bold text-white font-display">
-                        {session.teacherName}
-                      </h4>
-                      <p className="text-xs text-[#FEF08A] font-medium">
-                        Docente Titular · Transmitiendo en Directo
-                      </p>
-                    </div>
-                  </div>
+                  )
                 )}
 
                 {/* Overlaid Live Badges */}
                 <div className="absolute top-4 left-4 flex items-center gap-2">
                   <div className="px-3 py-1 rounded-xl bg-black/70 backdrop-blur-md border border-white/20 text-xs font-bold text-white flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Señal HD Óptima</span>
+                    <span>{session.isCamActive || isCamOn ? '🔴 Señal HD en Vivo' : 'En Directo'}</span>
                   </div>
+                  {isTeacherOrAdmin && viewerCount > 0 && (
+                    <div className="px-3 py-1 rounded-xl bg-emerald-950/80 border border-emerald-400/50 text-xs font-bold text-emerald-200 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5" />
+                      <span>{viewerCount} conectados a tu cámara</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="absolute bottom-4 left-4 px-3 py-1.5 rounded-xl bg-black/80 backdrop-blur-md border border-[#FACC15]/60 text-xs font-bold text-[#FEF08A]">
@@ -558,7 +860,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                     <div className="flex bg-white/10 p-0.5 rounded-xl border border-white/15 text-xs">
                       <button
                         type="button"
-                        onClick={() => setWhiteboardTab('notes')}
+                        onClick={() => handleSwitchWhiteboardTab('notes')}
                         className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
                           whiteboardTab === 'notes'
                             ? 'bg-[#7F1D1D] text-white border border-[#FACC15]/40 shadow-sm'
@@ -571,7 +873,7 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => setWhiteboardTab('canvas')}
+                        onClick={() => handleSwitchWhiteboardTab('canvas')}
                         className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all cursor-pointer ${
                           whiteboardTab === 'canvas'
                             ? 'bg-[#7F1D1D] text-white border border-[#FACC15]/40 shadow-sm'
@@ -799,23 +1101,61 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                     </div>
 
                     <div className="h-28 sm:h-32 bg-slate-900 flex items-center justify-center relative">
-                      {isCamOn ? (
-                        <video
-                          ref={pipVideoRef}
-                          autoPlay
-                          playsInline
-                          muted={isTeacherOrAdmin}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="text-center p-2">
-                          <div className="w-10 h-10 rounded-full bg-[#7F1D1D] border-2 border-[#FACC15] flex items-center justify-center mx-auto text-sm font-bold text-[#FEF08A]">
-                            {session.teacherName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      {isTeacherOrAdmin ? (
+                        isCamOn ? (
+                          <video
+                            ref={pipVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-center p-2">
+                            <div className="w-10 h-10 rounded-full bg-[#7F1D1D] border-2 border-[#FACC15] flex items-center justify-center mx-auto text-sm font-bold text-[#FEF08A]">
+                              {currentUser.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                            </div>
+                            <p className="text-[10px] text-[#FEF08A] font-semibold mt-1">
+                              {currentUser.name}
+                            </p>
                           </div>
-                          <p className="text-[10px] text-[#FEF08A] font-semibold mt-1">
-                            {session.teacherName}
-                          </p>
-                        </div>
+                        )
+                      ) : (
+                        session.isCamActive ? (
+                          remoteStream ? (
+                            <video
+                              ref={remotePipVideoRef}
+                              autoPlay
+                              playsInline
+                              muted={studentAudioMuted}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : session.teacherLiveFrame ? (
+                            <img
+                              src={session.teacherLiveFrame}
+                              alt="Miniatura Docente"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="text-center p-2">
+                              <div className="w-10 h-10 rounded-full bg-[#7F1D1D] border-2 border-[#FACC15] flex items-center justify-center mx-auto text-sm font-bold text-[#FEF08A] animate-pulse">
+                                {session.teacherName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                              </div>
+                              <p className="text-[10px] text-[#FEF08A] font-semibold mt-1">
+                                {session.teacherName}
+                              </p>
+                            </div>
+                          )
+                        ) : (
+                          <div className="text-center p-2">
+                            <div className="w-10 h-10 rounded-full bg-[#7F1D1D] border-2 border-[#FACC15] flex items-center justify-center mx-auto text-sm font-bold text-[#FEF08A]">
+                              {session.teacherName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                            </div>
+                            <p className="text-[10px] text-[#FEF08A] font-semibold mt-1">
+                              {session.teacherName}
+                            </p>
+                          </div>
+                        )
                       )}
 
                       <div className="absolute bottom-1.5 left-2 px-1.5 py-0.5 rounded bg-black/70 text-[9px] text-emerald-300 font-bold flex items-center gap-1">
@@ -878,19 +1218,53 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                   {isMicOn ? <Mic className="w-4 h-4 text-emerald-400" /> : <MicOff className="w-4 h-4" />}
                 </button>
 
-                {/* Cam toggle */}
-                <button
-                  type="button"
-                  onClick={() => setIsCamOn(!isCamOn)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isCamOn
-                      ? 'bg-[#7F1D1D] border-[#FACC15]/60 text-white shadow'
-                      : 'bg-white/10 hover:bg-white/20 border-white/20 text-slate-300'
-                  }`}
-                  title={isCamOn ? 'Apagar cámara' : 'Encender cámara web'}
-                >
-                  {isCamOn ? <Video className="w-4 h-4 text-[#FACC15]" /> : <VideoOff className="w-4 h-4" />}
-                </button>
+                {/* Cam toggle (docente) */}
+                {isTeacherOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCamOn(!isCamOn)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      isCamOn
+                        ? 'bg-[#7F1D1D] border-[#FACC15]/60 text-white shadow'
+                        : 'bg-white/10 hover:bg-white/20 border-white/20 text-slate-300'
+                    }`}
+                    title={isCamOn ? 'Apagar cámara' : 'Encender cámara web'}
+                  >
+                    {isCamOn ? <Video className="w-4 h-4 text-[#FACC15]" /> : <VideoOff className="w-4 h-4" />}
+                  </button>
+                )}
+
+                {/* Screen Share toggle (docente) */}
+                {isTeacherOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleToggleScreenShare}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      isScreenSharing
+                        ? 'bg-purple-700 border-purple-300 text-white shadow-lg animate-pulse'
+                        : 'bg-white/10 hover:bg-white/20 border-white/20 text-slate-300'
+                    }`}
+                    title={isScreenSharing ? 'Dejar de compartir pantalla' : 'Compartir pantalla / diapositivas'}
+                  >
+                    <ScreenShare className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* Student Audio toggle (alumno) */}
+                {!isTeacherOrAdmin && session.isCamActive && (
+                  <button
+                    type="button"
+                    onClick={() => setStudentAudioMuted(!studentAudioMuted)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      studentAudioMuted
+                        ? 'bg-red-950/80 border-red-500/60 text-red-300'
+                        : 'bg-emerald-950/80 border-emerald-400/60 text-emerald-300'
+                    }`}
+                    title={studentAudioMuted ? 'Activar audio de la maestra' : 'Silenciar audio'}
+                  >
+                    {studentAudioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  </button>
+                )}
 
                 {/* Quick Toggle Whiteboard */}
                 <button
@@ -915,21 +1289,23 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
               {/* Hand raise button for students */}
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onToggleHandRaise(currentUser.id)}
-                  className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    myParticipant?.hasHandRaised
-                      ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-lg scale-105'
-                      : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
-                  }`}
-                  title="Pedir la palabra a la maestra"
-                >
-                  <Hand className="w-4 h-4" />
-                  <span>{myParticipant?.hasHandRaised ? 'Mano Levantada ✋' : 'Levantar Mano'}</span>
-                </button>
+                {!isTeacherOrAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleHandRaise(currentUser.id)}
+                    className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      myParticipant?.hasHandRaised
+                        ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-lg scale-105'
+                        : 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
+                    }`}
+                    title="Pedir la palabra a la maestra"
+                  >
+                    <Hand className="w-4 h-4" />
+                    <span>{myParticipant?.hasHandRaised ? 'Mano Levantada ✋' : 'Levantar Mano'}</span>
+                  </button>
+                )}
 
-                {/* Teacher End Call / Student Leave */}
+                {/* Teacher End Call / Student Mode Toggle */}
                 {isTeacherOrAdmin ? (
                   <button
                     type="button"
@@ -942,11 +1318,13 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setActiveStageMode('video')}
+                    onClick={() => setActiveStageMode(activeStageMode === 'video' ? 'whiteboard' : 'video')}
                     className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer transition-all"
                   >
-                    <Video className="w-4 h-4" />
-                    <span className="hidden sm:inline">Modo Video</span>
+                    {activeStageMode === 'video' ? <PenTool className="w-4 h-4" /> : <Video className="w-4 h-4" />}
+                    <span className="hidden sm:inline">
+                      {activeStageMode === 'video' ? 'Ver Pizarra' : 'Ver Docente'}
+                    </span>
                   </button>
                 )}
               </div>
