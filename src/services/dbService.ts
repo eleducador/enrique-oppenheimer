@@ -195,16 +195,31 @@ export function subscribeUsers(callback: (users: UserProfile[]) => void): () => 
 }
 
 export async function saveUser(user: UserProfile): Promise<void> {
-  const userPayload: UserProfile & { codeLower: string } = {
+  const normalizedCode = user.code.toLowerCase().trim();
+  const normalizedName = user.name.toLowerCase().trim();
+  const firstName = normalizedName.split(' ')[0];
+
+  const userPayload: UserProfile & {
+    codeLower: string;
+    nameLower: string;
+    firstNameLower: string;
+  } = {
     ...user,
-    codeLower: user.code.toLowerCase().trim(),
+    codeLower: normalizedCode,
+    nameLower: normalizedName,
+    firstNameLower: firstName,
   };
 
   if (db) {
     try {
-      // Guardar con su ID único y su código para consulta directa
+      // Guardar con su ID único, su código y su primer nombre para consulta directa ultra-rápida
       await setDoc(doc(db, 'users', user.id), userPayload, { merge: true });
-      await setDoc(doc(db, 'users', user.code.toLowerCase().trim()), userPayload, { merge: true });
+      if (normalizedCode) {
+        await setDoc(doc(db, 'users', normalizedCode), userPayload, { merge: true });
+      }
+      if (firstName && firstName !== normalizedCode) {
+        await setDoc(doc(db, 'users', firstName), userPayload, { merge: true });
+      }
       console.info(`✅ [Firestore] Usuario ${user.name} (${user.code}) guardado en la nube exitosamente.`);
     } catch (err: any) {
       console.error('❌ [Firestore] Error guardando usuario:', err?.message || err);
