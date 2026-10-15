@@ -141,7 +141,9 @@ export function App() {
         setActiveLiveClass((prev) => {
           const hasChanged =
             prev.isLive !== liveData.isLive ||
+            prev.isBroadcasting !== liveData.isBroadcasting ||
             prev.isCamActive !== liveData.isCamActive ||
+            prev.isMicActive !== liveData.isMicActive ||
             prev.isScreenSharing !== liveData.isScreenSharing ||
             prev.teacherLiveFrame !== liveData.teacherLiveFrame ||
             prev.isWhiteboardProjected !== liveData.isWhiteboardProjected ||
@@ -191,7 +193,9 @@ export function App() {
             setActiveLiveClass((prev) => {
               const hasChanged =
                 prev.isLive !== liveData.isLive ||
+                prev.isBroadcasting !== liveData.isBroadcasting ||
                 prev.isCamActive !== liveData.isCamActive ||
+                prev.isMicActive !== liveData.isMicActive ||
                 prev.isScreenSharing !== liveData.isScreenSharing ||
                 prev.teacherLiveFrame !== liveData.teacherLiveFrame ||
                 prev.isWhiteboardProjected !== liveData.isWhiteboardProjected ||
@@ -1158,10 +1162,18 @@ export function App() {
                           ...activeLiveClass,
                           isLive: false,
                           isCamActive: false,
+                          isMicActive: false,
+                          isBroadcasting: false,
                           teacherLiveFrame: '',
                         };
                         setActiveLiveClass(updated);
-                        updateLiveClass({ isLive: false, isCamActive: false, teacherLiveFrame: '' }); // Sync to Firestore
+                        updateLiveClass({
+                          isLive: false,
+                          isCamActive: false,
+                          isMicActive: false,
+                          isBroadcasting: false,
+                          teacherLiveFrame: '',
+                        }); // Sync to Firestore
                         fetch('/api/sync/live-class', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
