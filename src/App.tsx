@@ -139,17 +139,18 @@ export function App() {
     const unsubLive = subscribeLiveClass((liveData) => {
       if (liveData && liveData.id) {
         setActiveLiveClass((prev) => {
-          if (
+          const hasChanged =
             prev.isLive !== liveData.isLive ||
+            prev.isCamActive !== liveData.isCamActive ||
+            prev.isScreenSharing !== liveData.isScreenSharing ||
+            prev.teacherLiveFrame !== liveData.teacherLiveFrame ||
             prev.isWhiteboardProjected !== liveData.isWhiteboardProjected ||
             prev.whiteboardNotes !== liveData.whiteboardNotes ||
             prev.whiteboardDrawingData !== liveData.whiteboardDrawingData ||
+            prev.whiteboardActiveTab !== liveData.whiteboardActiveTab ||
             prev.chatMessages?.length !== liveData.chatMessages?.length ||
-            JSON.stringify(prev.participants) !== JSON.stringify(liveData.participants)
-          ) {
-            return liveData;
-          }
-          return prev;
+            JSON.stringify(prev.participants) !== JSON.stringify(liveData.participants);
+          return hasChanged ? { ...prev, ...liveData } : prev;
         });
       }
     });
@@ -188,17 +189,18 @@ export function App() {
           const liveData = await liveRes.json();
           if (liveData && liveData.id) {
             setActiveLiveClass((prev) => {
-              if (
+              const hasChanged =
                 prev.isLive !== liveData.isLive ||
+                prev.isCamActive !== liveData.isCamActive ||
+                prev.isScreenSharing !== liveData.isScreenSharing ||
+                prev.teacherLiveFrame !== liveData.teacherLiveFrame ||
                 prev.isWhiteboardProjected !== liveData.isWhiteboardProjected ||
                 prev.whiteboardNotes !== liveData.whiteboardNotes ||
                 prev.whiteboardDrawingData !== liveData.whiteboardDrawingData ||
+                prev.whiteboardActiveTab !== liveData.whiteboardActiveTab ||
                 prev.chatMessages?.length !== liveData.chatMessages?.length ||
-                JSON.stringify(prev.participants) !== JSON.stringify(liveData.participants)
-              ) {
-                return liveData;
-              }
-              return prev;
+                JSON.stringify(prev.participants) !== JSON.stringify(liveData.participants);
+              return hasChanged ? { ...prev, ...liveData } : prev;
             });
           }
         }
@@ -1152,9 +1154,14 @@ export function App() {
                         );
                       }}
                       onEndClass={() => {
-                        const updated = { ...activeLiveClass, isLive: false };
+                        const updated = {
+                          ...activeLiveClass,
+                          isLive: false,
+                          isCamActive: false,
+                          teacherLiveFrame: '',
+                        };
                         setActiveLiveClass(updated);
-                        updateLiveClass({ isLive: false }); // Sync to Firestore
+                        updateLiveClass({ isLive: false, isCamActive: false, teacherLiveFrame: '' }); // Sync to Firestore
                         fetch('/api/sync/live-class', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
@@ -1211,18 +1218,19 @@ export function App() {
                           body: JSON.stringify({ message: newMsg }),
                         }).catch(() => {});
                       }}
-                      onUpdateWhiteboard={(notes, isProjected, drawingData) => {
+                      onUpdateWhiteboard={(notes, isProjected, drawingData, activeTab) => {
                         setActiveLiveClass((prev) => ({
                           ...prev,
                           whiteboardNotes: notes,
                           isWhiteboardProjected: isProjected !== undefined ? isProjected : prev.isWhiteboardProjected,
                           whiteboardDrawingData: drawingData !== undefined ? drawingData : prev.whiteboardDrawingData,
+                          whiteboardActiveTab: activeTab !== undefined ? activeTab : prev.whiteboardActiveTab,
                         }));
-                        updateWhiteboard(notes, isProjected ?? false, drawingData); // Sync to Firestore
+                        updateWhiteboard(notes, isProjected ?? false, drawingData, activeTab); // Sync to Firestore
                         fetch('/api/sync/live-class/whiteboard', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ notes, isProjected, drawingData }),
+                          body: JSON.stringify({ notes, isProjected, drawingData, activeTab }),
                         }).catch(() => {});
                       }}
                     />

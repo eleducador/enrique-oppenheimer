@@ -261,6 +261,10 @@ export interface LiveClassSession {
   isWhiteboardProjected?: boolean;
   whiteboardNotes?: string;
   whiteboardDrawingData?: string;
+  whiteboardActiveTab?: 'notes' | 'canvas';
+  isCamActive?: boolean;
+  isScreenSharing?: boolean;
+  teacherLiveFrame?: string;
   chatMessages: LiveClassMessage[];
   messages?: LiveClassMessage[];
 }
