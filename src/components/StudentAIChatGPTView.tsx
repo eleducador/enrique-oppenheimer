@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, CourseItem } from '../types';
 import { INSTITUTION_ASSETS } from '../data/initialData';
+import { askGeminiTutor } from '../services/geminiService';
 
 interface ChatMessage {
   id: string;
@@ -575,39 +576,29 @@ export const StudentAIChatGPTView: React.FC<StudentAIChatGPTViewProps> = ({
 
     try {
       const historyPayload = currentMsgs.slice(-4).map((m) => ({
-        role: m.sender === 'user' ? 'user' : 'model',
+        role: (m.sender === 'user' ? 'user' : 'model') as 'user' | 'model',
         text: m.text,
       }));
 
-      const res = await fetch('/api/student-chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: query,
-          history: historyPayload,
-          studentName: currentUser.name,
-          courseContext: activeCourse?.name,
-          gradeLevel: '4.° de Secundaria',
-          requestImage: requestForImage,
-        }),
-      });
-
-      const data = await res.json();
-      const assistantText =
-        data.reply ||
-        'Disculpa, no pude procesar la respuesta en este momento. Por favor intenta reformular tu pregunta.';
+      const aiResponse = await askGeminiTutor(
+        query,
+        activeCourse?.name,
+        currentUser.name,
+        historyPayload,
+        requestForImage
+      );
 
       const botMsg: ChatMessage = {
         id: `bot-msg-${Date.now()}`,
         sender: 'assistant',
-        text: assistantText,
+        text: aiResponse.reply,
         timestamp: new Date().toLocaleTimeString('es-PE', {
           hour: '2-digit',
           minute: '2-digit',
         }),
         courseTag: activeCourse?.name || 'Tutor Oppenheimer',
-        imageUrl: data.imageUrl,
-        imagePrompt: data.imagePrompt,
+        imageUrl: aiResponse.imageUrl,
+        imagePrompt: aiResponse.imagePrompt,
       };
 
       setThreads((prev) =>
@@ -618,7 +609,7 @@ export const StudentAIChatGPTView: React.FC<StudentAIChatGPTViewProps> = ({
         )
       );
     } catch (err) {
-      console.warn('Backend chat offline, using pedagogical tutor fallback:', err);
+      console.warn('Error en consulta de IA:', err);
       const qLower = query.toLowerCase();
       let fallbackText = '';
       let fallbackImgUrl: string | undefined = undefined;
@@ -626,14 +617,20 @@ export const StudentAIChatGPTView: React.FC<StudentAIChatGPTViewProps> = ({
       if (requestForImage || qLower.includes('imagen') || qLower.includes('dibuja') || qLower.includes('ilustra')) {
         fallbackImgUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(query.slice(0, 160))}?width=800&height=600&nologo=true&model=turbo`;
         fallbackText = `### 🎨 Ilustración Generada sobre "${query}"\n\nAquí tienes la imagen generada con IA para apoyar tu investigación escolar.`;
+      } else if (qLower.includes('inca') || qLower.includes('tahuantinsuyo') || qLower.includes('cusco') || qLower.includes('machu')) {
+        fallbackText = `### 🏛️ Los Incas y el Tahuantinsuyo
+
+Los **incas** conformaron la civilización más extendida y desarrollada de América del Sur antes de la conquista española. Su imperio, llamado **Tahuantinsuyo** ("las cuatro regiones unidas"), tuvo como capital sagrada la ciudad de **Cusco** (Perú) y se extendió a lo largo de la cordillera de los Andes abarcando territorios de Perú, Bolivia, Ecuador y partes de Colombia, Chile y Argentina.
+
+#### Aspectos Clave:
+* **Gobernante Supremo:** El **Inca**, considerado hijo del dios Sol (*Inti*).
+* **Ingeniería y Agricultura:** Crearon una colosal red vial (**Qhapaq Ñan**) y terrazas agrícolas (**andenes**) para cultivar papa, maíz y quinua en laderas empinadas.
+* **Administración y Registro:** Utilizaron el **quipu**, un sofisticado sistema de cuerdas y nudos para registrar cosechas, censos y tributos.
+* **Monumentos:** Dejaron admirables obras líticas como **Machu Picchu**, **Sacsayhuamán** y el **Qorikancha**.`;
       } else if (qLower.includes('pitagora') || qLower.includes('triangulo') || qLower.includes('hipotenusa')) {
-        fallbackText = `### 📐 Teorema de Pitágoras — Fundamento y Aplicación Práctica\n\n¡Hola! El **Teorema de Pitágoras** establece que en todo **triángulo rectángulo**:\n\n> **$a^2 + b^2 = c^2$**\n\n* Donde **$a$** y **$b$** son los catetos perpendiculares.\n* Y **$c$** es la hipotenusa (el lado mayor opuesto a los 90°).\n\n#### Ejemplo de Aplicación en la Vida Real:\nSi colocamos una escalera con base a **3 metros** de la pared y altura de **4 metros**:\n1. $3^2 + 4^2 = 9 + 16 = 25$\n2. $\\sqrt{25} = 5$ metros de longitud.\n\n*Recuerda la terna pitagórica clásica:* **3 - 4 - 5** y sus múltiplos (**6 - 8 - 10**). ¡Aparece en la mayoría de preguntas de admisión!`;
-      } else if (qLower.includes('enlace') || qLower.includes('quimic') || qLower.includes('covalent')) {
-        fallbackText = `### 🧪 Enlaces Químicos: Iónico vs Covalente\n\n1. **Enlace Iónico:**\n   * Ocurre entre un **Metal + No Metal** (ej. $\\text{NaCl}$, $\\text{MgO}$).\n   * Hay **transferencia neta** de electrones con formación de iones.\n   * Diferencia de electronegatividad: $\\Delta EN \\ge 1.7$.\n\n2. **Enlace Covalente:**\n   * Ocurre entre **No Metales** (ej. $\\text{H}_2\\text{O}$, $\\text{CO}_2$).\n   * Se **comparten pares de electrones**.\n   * Diferencia de electronegatividad: $\\Delta EN < 1.7$.`;
-      } else if (qLower.includes('ensayo') || qLower.includes('redac') || qLower.includes('comunic')) {
-        fallbackText = `### 📚 Estructura de un Ensayo Académico\n\n1. **Introducción (15%):**\n   * Contextualización del tema.\n   * **Tesis clara:** Tu postura argumentativa central.\n2. **Desarrollo Argumentativo (70%):**\n   * Párrafos de argumento respaldados con evidencias, citas textuales y contraargumentación.\n3. **Conclusión (15%):**\n   * Síntesis de las ideas clave y reflexión final sin introducir datos nuevos.`;
+        fallbackText = `### 📐 Teorema de Pitágoras — Fundamento y Aplicación Práctica\n\nEn todo **triángulo rectángulo**:\n\n> **$a^2 + b^2 = c^2$**\n\n* Donde **$a$** y **$b$** son los catetos perpendiculares.\n* Y **$c$** es la hipotenusa (el lado mayor opuesto a los 90°).\n\n#### Ejemplo:\nSi los catetos miden **3 m** y **4 m**:\n$$3^2 + 4^2 = 9 + 16 = 25 \\implies c = \\sqrt{25} = 5\\text{ m}$$`;
       } else {
-        fallbackText = `### 🎓 Tutor Académico Oppenheimer\n\n¡Excelente pregunta sobre tus estudios!\n\nPara abordar este tema con metodología de alto rendimiento:\n1. **Identifica los conceptos clave y fórmulas involucradas.**\n2. **Aplica un ejemplo modelo paso a paso** verificando cada operación.\n3. **Comprueba las unidades y la coherencia del resultado.**\n\n*¿Deseas profundizar en algún paso específico o ver un ejercicio resuelto tipo examen?*`;
+        fallbackText = `### 🎓 Tutor Académico Oppenheimer\n\nEstimado estudiante, hemos procesado tu consulta sobre **"${query}"**.\n\nPara profundizar en este tema de forma óptima, te recomendamos:\n* Revisar la guía y materiales de tu curso en el aula virtual.\n* Consultar los ejercicios tipo examen resueltos en la biblioteca escolar.\n* Puedes volver a enviar tu pregunta o solicitar un ejemplo específico para recibir asistencia inmediata de la IA.`;
       }
 
       const botMsg: ChatMessage = {
