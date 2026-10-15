@@ -41,9 +41,12 @@ import {
 import {
   startTeacherBroadcast,
   startStudentViewer,
+  createAvatarVideoTrack,
+  BroadcasterCleanup,
 } from '../services/webrtcService';
 import {
   updateLiveCamState,
+  updateLiveBroadcastState,
   joinLiveClass,
 } from '../services/dbService';
 
@@ -125,6 +128,13 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const debounceTimerRef = useRef<any>(null);
 
+  // Broadcaster & Audio/Video Track Controllers
+  const broadcasterControllerRef = useRef<BroadcasterCleanup | null>(null);
+  const audioTrackRef = useRef<MediaStreamTrack | null>(null);
+  const webcamTrackRef = useRef<MediaStreamTrack | null>(null);
+  const avatarTrackRef = useRef<MediaStreamTrack | null>(null);
+  const persistentAudioRef = useRef<HTMLAudioElement>(null);
+
   // 1. Auto-register current user into session.participants
   useEffect(() => {
     if (session.isLive && currentUser.id) {
@@ -196,92 +206,287 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
     redrawCanvas(session.whiteboardDrawingData);
   }, [session.whiteboardDrawingData, whiteboardTab]);
 
-  // 6. DOCENTE: Iniciar transmisión de Cámara Web y Audio + WebRTC Broadcaster + Fallback de fotogramas
+  // 6. DOCENTE: Transmitir Micrófono y Video (Cámara Real o Avatar Sintético) continuamente mientras session.isLive
   useEffect(() => {
     if (!isTeacherOrAdmin) return;
 
-    let stopBroadcastFn: (() => void) | null = null;
+    let isCancelled = false;
 
-    if (isCamOn && session.isLive) {
-      navigator.mediaDevices
-        ?.getUserMedia({
-          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-          audio: isMicOn,
-        })
-        .then((stream) => {
-          mediaStreamRef.current = stream;
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.muted = true;
-          }
-          if (pipVideoRef.current) {
-            pipVideoRef.current.srcObject = stream;
-            pipVideoRef.current.muted = true;
+    if (session.isLive) {
+      const initBroadcast = async () => {
+        try {
+          // 1. Capturar micrófono para permitir explicaciones en vivo continuas
+          let audioTrack: MediaStreamTrack | null = null;
+          try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioTrack = audioStream.getAudioTracks()[0];
+            audioTrack.enabled = isMicOn;
+            audioTrackRef.current = audioTrack;
+          } catch (audioErr) {
+            console.warn('Micrófono no concedido o no disponible:', audioErr);
           }
 
-          // Iniciar servidor WebRTC P2P
-          stopBroadcastFn = startTeacherBroadcast(stream, (count) => {
+          if (isCancelled) {
+            if (audioTrack) audioTrack.stop();
+            return;
+          }
+
+          // 2. Obtener pista de video: cámara real o avatar sintético (si la cámara está apagada o proyectando pizarra)
+          let videoTrack: MediaStreamTrack;
+          if (isCamOn) {
+            try {
+              const camStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+              });
+              videoTrack = camStream.getVideoTracks()[0];
+              webcamTrackRef.current = videoTrack;
+            } catch (camErr) {
+              console.warn('Cámara web no disponible, usando avatar representativo:', camErr);
+              setIsCamOn(false);
+              videoTrack = createAvatarVideoTrack(currentUser.name);
+              avatarTrackRef.current = videoTrack;
+            }
+          } else {
+            videoTrack = createAvatarVideoTrack(currentUser.name);
+            avatarTrackRef.current = videoTrack;
+          }
+
+          if (isCancelled) {
+            videoTrack.stop();
+            if (audioTrack) audioTrack.stop();
+            return;
+          }
+
+          // 3. Crear stream maestro unificado
+          const tracks: MediaStreamTrack[] = [videoTrack];
+          if (audioTrack) tracks.push(audioTrack);
+          const masterStream = new MediaStream(tracks);
+          mediaStreamRef.current = masterStream;
+
+          // 4. Conectar previsualización local si la cámara está encendida
+          if (isCamOn) {
+            if (videoRef.current) {
+              videoRef.current.srcObject = masterStream;
+              videoRef.current.muted = true;
+            }
+            if (pipVideoRef.current) {
+              pipVideoRef.current.srcObject = masterStream;
+              pipVideoRef.current.muted = true;
+            }
+          }
+
+          // 5. Iniciar broadcaster WebRTC P2P
+          const controller = startTeacherBroadcast(masterStream, (count) => {
             setViewerCount(count);
           });
+          broadcasterControllerRef.current = controller;
 
-          // Notificar a Firestore que la cámara de la maestra está activa
-          updateLiveCamState(true);
+          // 6. Actualizar estado en Firestore
+          await updateLiveBroadcastState(true, isMicOn, isCamOn, undefined, isScreenSharing);
+          if (isCamOn) {
+            await updateLiveCamState(true);
+          }
 
-          // Generador de fotogramas en vivo de respaldo (1 cuadro cada 1.5s comprimido a 480x270 JPEG)
-          const offCanvas = document.createElement('canvas');
-          offCanvas.width = 480;
-          offCanvas.height = 270;
-          const offCtx = offCanvas.getContext('2d');
+          // 7. Fotogramas de respaldo si la cámara web está activa
+          if (isCamOn) {
+            const offCanvas = document.createElement('canvas');
+            offCanvas.width = 480;
+            offCanvas.height = 270;
+            const offCtx = offCanvas.getContext('2d');
 
-          if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
-          frameIntervalRef.current = setInterval(() => {
-            if (videoRef.current && offCtx && videoRef.current.readyState >= 2) {
-              try {
-                offCtx.drawImage(videoRef.current, 0, 0, 480, 270);
-                const frameJpeg = offCanvas.toDataURL('image/jpeg', 0.5);
-                updateLiveCamState(true, frameJpeg, isScreenSharing);
-              } catch {
-                // Ignore capture glitches
+            if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+            frameIntervalRef.current = setInterval(() => {
+              if (videoRef.current && offCtx && videoRef.current.readyState >= 2) {
+                try {
+                  offCtx.drawImage(videoRef.current, 0, 0, 480, 270);
+                  const frameJpeg = offCanvas.toDataURL('image/jpeg', 0.5);
+                  updateLiveCamState(true, frameJpeg, isScreenSharing);
+                } catch {
+                  // Ignore glitches
+                }
               }
-            }
-          }, 1500);
-        })
-        .catch((err) => {
-          console.warn('Permiso de cámara no concedido o no disponible:', err);
-          setIsCamOn(false);
-        });
+            }, 1500);
+          }
+        } catch (err) {
+          console.error('Error iniciando transmisión del docente:', err);
+        }
+      };
+
+      initBroadcast();
     } else {
-      if (stopBroadcastFn) stopBroadcastFn();
+      if (broadcasterControllerRef.current) {
+        broadcasterControllerRef.current.stop();
+        broadcasterControllerRef.current = null;
+      }
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
+      }
+      if (audioTrackRef.current) {
+        audioTrackRef.current.stop();
+        audioTrackRef.current = null;
+      }
+      if (webcamTrackRef.current) {
+        webcamTrackRef.current.stop();
+        webcamTrackRef.current = null;
+      }
+      if (avatarTrackRef.current) {
+        avatarTrackRef.current.stop();
+        avatarTrackRef.current = null;
       }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       }
-      updateLiveCamState(false, '', false);
+      updateLiveBroadcastState(false, false, false, '', false);
     }
 
     return () => {
-      if (stopBroadcastFn) stopBroadcastFn();
+      isCancelled = true;
+      if (broadcasterControllerRef.current) {
+        broadcasterControllerRef.current.stop();
+        broadcasterControllerRef.current = null;
+      }
       if (frameIntervalRef.current) {
         clearInterval(frameIntervalRef.current);
         frameIntervalRef.current = null;
       }
+      if (audioTrackRef.current) {
+        audioTrackRef.current.stop();
+        audioTrackRef.current = null;
+      }
+      if (webcamTrackRef.current) {
+        webcamTrackRef.current.stop();
+        webcamTrackRef.current = null;
+      }
+      if (avatarTrackRef.current) {
+        avatarTrackRef.current.stop();
+        avatarTrackRef.current = null;
+      }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
       }
     };
-  }, [isCamOn, session.isLive, isTeacherOrAdmin, isMicOn]);
+  }, [session.isLive, isTeacherOrAdmin]);
 
-  // 7. ESTUDIANTE: Recibir señal WebRTC de la maestra cuando isCamActive esté encendido
+  // Alternar micrófono en caliente (Hardware Track Level + Firestore)
+  const handleToggleMic = async () => {
+    const nextMicState = !isMicOn;
+    setIsMicOn(nextMicState);
+
+    if (audioTrackRef.current) {
+      audioTrackRef.current.enabled = nextMicState;
+    } else if (nextMicState && isTeacherOrAdmin && session.isLive) {
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const newAudioTrack = audioStream.getAudioTracks()[0];
+        newAudioTrack.enabled = true;
+        audioTrackRef.current = newAudioTrack;
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.addTrack(newAudioTrack);
+        }
+        if (broadcasterControllerRef.current) {
+          await broadcasterControllerRef.current.replaceTrack(newAudioTrack);
+        }
+      } catch (err) {
+        console.warn('No se pudo activar el micrófono:', err);
+      }
+    }
+
+    if (isTeacherOrAdmin && session.isLive) {
+      await updateLiveBroadcastState(true, nextMicState, isCamOn, undefined, isScreenSharing);
+    }
+  };
+
+  // Alternar cámara web en caliente (Intercambio fluido de pistas WebRTC sin reiniciar llamada)
+  const handleToggleCam = async () => {
+    if (!isTeacherOrAdmin) return;
+    const nextCamState = !isCamOn;
+    setIsCamOn(nextCamState);
+
+    if (nextCamState) {
+      try {
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+        });
+        const newWebcamTrack = camStream.getVideoTracks()[0];
+        if (webcamTrackRef.current) {
+          webcamTrackRef.current.stop();
+        }
+        webcamTrackRef.current = newWebcamTrack;
+
+        if (avatarTrackRef.current) {
+          avatarTrackRef.current.stop();
+          avatarTrackRef.current = null;
+        }
+
+        if (broadcasterControllerRef.current) {
+          await broadcasterControllerRef.current.replaceTrack(newWebcamTrack);
+        }
+
+        const previewStream = new MediaStream([newWebcamTrack]);
+        if (videoRef.current) {
+          videoRef.current.srcObject = previewStream;
+          videoRef.current.muted = true;
+        }
+        if (pipVideoRef.current) {
+          pipVideoRef.current.srcObject = previewStream;
+          pipVideoRef.current.muted = true;
+        }
+
+        await updateLiveBroadcastState(true, isMicOn, true, undefined, isScreenSharing);
+        await updateLiveCamState(true);
+
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = 480;
+        offCanvas.height = 270;
+        const offCtx = offCanvas.getContext('2d');
+        if (frameIntervalRef.current) clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = setInterval(() => {
+          if (videoRef.current && offCtx && videoRef.current.readyState >= 2) {
+            try {
+              offCtx.drawImage(videoRef.current, 0, 0, 480, 270);
+              const frameJpeg = offCanvas.toDataURL('image/jpeg', 0.5);
+              updateLiveCamState(true, frameJpeg, isScreenSharing);
+            } catch {}
+          }
+        }, 1500);
+      } catch (err) {
+        console.warn('Permiso de cámara no concedido:', err);
+        setIsCamOn(false);
+      }
+    } else {
+      if (frameIntervalRef.current) {
+        clearInterval(frameIntervalRef.current);
+        frameIntervalRef.current = null;
+      }
+      if (webcamTrackRef.current) {
+        webcamTrackRef.current.stop();
+        webcamTrackRef.current = null;
+      }
+      const avatarTrack = createAvatarVideoTrack(currentUser.name);
+      avatarTrackRef.current = avatarTrack;
+
+      if (broadcasterControllerRef.current) {
+        await broadcasterControllerRef.current.replaceTrack(avatarTrack);
+      }
+
+      if (videoRef.current) videoRef.current.srcObject = null;
+      if (pipVideoRef.current) pipVideoRef.current.srcObject = null;
+
+      await updateLiveBroadcastState(true, isMicOn, false, '', isScreenSharing);
+      await updateLiveCamState(false, '', isScreenSharing);
+    }
+  };
+
+  // 7. ESTUDIANTE: Recibir señal WebRTC continua de audio y video de la maestra mientras session.isLive
   useEffect(() => {
     if (isTeacherOrAdmin) return;
 
     let stopViewerFn: (() => void) | null = null;
 
-    if (session.isLive && session.isCamActive) {
+    if (session.isLive) {
       setWebrtcStatus('connecting');
       stopViewerFn = startStudentViewer(
         currentUser.id,
@@ -289,6 +494,15 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
         (stream) => {
           setRemoteStream(stream);
           setWebrtcStatus('connected');
+
+          // Audio continuo garantizado a través de persistentAudioRef
+          if (persistentAudioRef.current) {
+            persistentAudioRef.current.srcObject = stream;
+            persistentAudioRef.current.play().catch((err) => {
+              console.warn('Reproducción de audio bloqueada hasta interacción del alumno:', err);
+            });
+          }
+
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = stream;
             remoteVideoRef.current.play().catch(() => {});
@@ -306,16 +520,23 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
       if (stopViewerFn) stopViewerFn();
       setRemoteStream(null);
       setWebrtcStatus('idle');
+      if (persistentAudioRef.current) {
+        persistentAudioRef.current.srcObject = null;
+      }
     }
 
     return () => {
       if (stopViewerFn) stopViewerFn();
     };
-  }, [session.isLive, session.isCamActive, currentUser.id, currentUser.name, isTeacherOrAdmin]);
+  }, [session.isLive, currentUser.id, currentUser.name, isTeacherOrAdmin]);
 
-  // Mantener las etiquetas de video del alumno sincronizadas si cambia de modo
+  // Mantener las etiquetas de audio y video del alumno sincronizadas al cambiar de vista
   useEffect(() => {
     if (remoteStream) {
+      if (persistentAudioRef.current && persistentAudioRef.current.srcObject !== remoteStream) {
+        persistentAudioRef.current.srcObject = remoteStream;
+        persistentAudioRef.current.play().catch(() => {});
+      }
       if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStream) {
         remoteVideoRef.current.srcObject = remoteStream;
         remoteVideoRef.current.play().catch(() => {});
@@ -336,28 +557,47 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
           video: true,
           audio: true,
         });
-        mediaStreamRef.current = screenStream;
-        if (videoRef.current) videoRef.current.srcObject = screenStream;
-        if (pipVideoRef.current) pipVideoRef.current.srcObject = screenStream;
+        const screenTrack = screenStream.getVideoTracks()[0];
+        if (webcamTrackRef.current) {
+          webcamTrackRef.current.stop();
+        }
+        webcamTrackRef.current = screenTrack;
+
+        if (broadcasterControllerRef.current) {
+          await broadcasterControllerRef.current.replaceTrack(screenTrack);
+        }
+
+        if (videoRef.current) videoRef.current.srcObject = new MediaStream([screenTrack]);
+        if (pipVideoRef.current) pipVideoRef.current.srcObject = new MediaStream([screenTrack]);
         setIsCamOn(true);
         setIsScreenSharing(true);
         updateLiveCamState(true, undefined, true);
+        updateLiveBroadcastState(true, isMicOn, true, undefined, true);
 
-        screenStream.getVideoTracks()[0].onended = () => {
+        screenTrack.onended = async () => {
           setIsScreenSharing(false);
           setIsCamOn(false);
+          const avatarTrack = createAvatarVideoTrack(currentUser.name);
+          avatarTrackRef.current = avatarTrack;
+          if (broadcasterControllerRef.current) {
+            await broadcasterControllerRef.current.replaceTrack(avatarTrack);
+          }
           updateLiveCamState(false, '', false);
+          updateLiveBroadcastState(true, isMicOn, false, '', false);
         };
       } catch (err) {
         console.warn('Pantalla cancelada por usuario:', err);
       }
     } else {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      }
       setIsScreenSharing(false);
       setIsCamOn(false);
+      const avatarTrack = createAvatarVideoTrack(currentUser.name);
+      avatarTrackRef.current = avatarTrack;
+      if (broadcasterControllerRef.current) {
+        await broadcasterControllerRef.current.replaceTrack(avatarTrack);
+      }
       updateLiveCamState(false, '', false);
+      updateLiveBroadcastState(true, isMicOn, false, '', false);
     }
   };
 
@@ -508,6 +748,17 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
 
   return (
     <div className="h-[calc(100vh-5.5rem)] rounded-3xl bg-black/75 backdrop-blur-2xl border border-white/15 shadow-2xl flex flex-col overflow-hidden text-slate-100">
+      {/* Reproductor de audio continuo para alumnos: voz en vivo ininterrumpida de la maestra */}
+      {!isTeacherOrAdmin && (
+        <audio
+          ref={persistentAudioRef}
+          autoPlay
+          playsInline
+          muted={studentAudioMuted}
+          className="hidden"
+        />
+      )}
+
       {/* Top Session Header Bar */}
       <div className="h-14 px-4 sm:px-6 border-b border-white/10 flex items-center justify-between bg-black/50 backdrop-blur-md shrink-0">
         <div className="flex items-center gap-3 min-w-0">
@@ -853,6 +1104,24 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                         )}
                       </h4>
                     </div>
+
+                    {/* Badge de micrófono / voz en vivo del docente explicando la pizarra */}
+                    {(isTeacherOrAdmin ? isMicOn : session.isMicActive !== false) ? (
+                      <div className="ml-2 px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-400/60 text-emerald-200 text-[11px] font-bold flex items-center gap-1.5 shadow-sm">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <Mic className="w-3 h-3 text-emerald-400" />
+                        <span className="hidden sm:inline">Docente Explicando en Vivo</span>
+                        <span className="sm:hidden">En Vivo</span>
+                      </div>
+                    ) : (
+                      <div className="ml-2 px-2.5 py-0.5 rounded-full bg-red-950/80 border border-red-500/50 text-red-300 text-[11px] font-bold flex items-center gap-1.5">
+                        <MicOff className="w-3 h-3 text-red-400" />
+                        <span className="hidden sm:inline">Micrófono en Pausa</span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Sub-modes: Notes vs Canvas */}
@@ -1207,22 +1476,25 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                 {/* Mic toggle */}
                 <button
                   type="button"
-                  onClick={() => setIsMicOn(!isMicOn)}
+                  onClick={handleToggleMic}
                   className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                     isMicOn
-                      ? 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
+                      ? 'bg-emerald-950/80 hover:bg-emerald-900 border-emerald-400/60 text-emerald-200 shadow-md'
                       : 'bg-red-950/80 border-red-500/60 text-red-300'
                   }`}
                   title={isMicOn ? 'Silenciar micrófono' : 'Activar micrófono'}
                 >
                   {isMicOn ? <Mic className="w-4 h-4 text-emerald-400" /> : <MicOff className="w-4 h-4" />}
+                  <span className="hidden sm:inline">
+                    {isMicOn ? 'Micrófono Activo' : 'Micrófono Mudo'}
+                  </span>
                 </button>
 
                 {/* Cam toggle (docente) */}
                 {isTeacherOrAdmin && (
                   <button
                     type="button"
-                    onClick={() => setIsCamOn(!isCamOn)}
+                    onClick={handleToggleCam}
                     className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                       isCamOn
                         ? 'bg-[#7F1D1D] border-[#FACC15]/60 text-white shadow'
@@ -1231,6 +1503,9 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                     title={isCamOn ? 'Apagar cámara' : 'Encender cámara web'}
                   >
                     {isCamOn ? <Video className="w-4 h-4 text-[#FACC15]" /> : <VideoOff className="w-4 h-4" />}
+                    <span className="hidden sm:inline">
+                      {isCamOn ? 'Cámara ON' : 'Cámara OFF'}
+                    </span>
                   </button>
                 )}
 
@@ -1251,10 +1526,17 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                 )}
 
                 {/* Student Audio toggle (alumno) */}
-                {!isTeacherOrAdmin && session.isCamActive && (
+                {!isTeacherOrAdmin && (
                   <button
                     type="button"
-                    onClick={() => setStudentAudioMuted(!studentAudioMuted)}
+                    onClick={() => {
+                      const next = !studentAudioMuted;
+                      setStudentAudioMuted(next);
+                      if (persistentAudioRef.current) {
+                        persistentAudioRef.current.muted = next;
+                        if (!next) persistentAudioRef.current.play().catch(() => {});
+                      }
+                    }}
                     className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                       studentAudioMuted
                         ? 'bg-red-950/80 border-red-500/60 text-red-300'
@@ -1263,6 +1545,9 @@ export const LiveClassroomView: React.FC<LiveClassroomViewProps> = ({
                     title={studentAudioMuted ? 'Activar audio de la maestra' : 'Silenciar audio'}
                   >
                     {studentAudioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                    <span className="hidden sm:inline">
+                      {studentAudioMuted ? 'Audio Silenciado' : 'Audio en Vivo'}
+                    </span>
                   </button>
                 )}
 
